@@ -14,3 +14,4 @@ _코다리 에이전트만 읽고 쓰는 개인 노트. 학습·교훈·자주 �
 - [2026-06-03] git pull 명령으로 GitHub 최신 변경사항 동기화 시도 → 산출물 sessions/2026-06-03T13-47/developer.md
 - [2026-06-03] 동기화 실패 시 발생한 충돌 파일 확인 및 수동 병합 수행 → 산출물 sessions/2026-06-03T13-47/developer.md
 - [2026-06-03] 필수 패키지 설치: git, github-cli, auto_planner.py 및 trend_sniper.py 실행에 필요한 의존성 설치 → 산출물 sessions/2026-06-03T13-50/developer.md
+- [2026-06-03] requirements.txt에 명시된 모든 패키지를 pip install 명령으로 설치하고, GitHub Actions 워크플로우를 통해 자동 동기화 설정을 완료하세요. → 산출물 sessions/2026-06-03T13-54/developer.md

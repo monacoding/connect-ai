@@ -50,6 +50,20 @@
       "sessionDir": "2026-06-03T13-33",
       "evidence": "완료: sessions/2026-06-03T13-33/_report.md\n- 코다리: auto_planner.py 실행 오류를 분석하고 코드 수정하여 정상 작동하게 수정\n- 코다리: trend_sniper.py 설정 파일을 확인하고 LLM 연결 및 키워드 설정을 완료\n- 코다리: Google Calendar API 연동 설정을 검토하고 인증 토큰 및 웹hook을 조정하여 연결 문제 해결\n\nCEO 종합 요점: ## 🗂 작업 라운드 — 누가 뭐 했나\n\n### 💻 코다리 _(시니어 풀스택 엔지니어)_\n> 📋 **지시**: auto_planner.py 실행 오류를 분석하고 코드 수정하여 정상 작동하게 수정\n> 🔧 **도구 실행**: _(없음 — LLM 추론만)_\n> 💡 **핵심 산출**: <list_files path=\"~/AI_BRAIN/_company/_",
       "completedAt": "2026-06-03T13:34:54.436Z"
+    },
+    {
+      "id": "20260603135753-l1th",
+      "title": "수능 문제 다운로드 경로 재확인",
+      "description": "수능 문제 다시 다운받아봐. 수능 다운받을 수 있는 웹페이지 다시 확인해",
+      "owner": "user",
+      "createdAt": "2026-06-03T13:57:53.471Z",
+      "dueAt": "2026-06-04",
+      "status": "pending",
+      "nudges": 0,
+      "priority": "normal",
+      "preAlarmsSent": [
+        "t1d"
+      ]
     }
   ]
 }
