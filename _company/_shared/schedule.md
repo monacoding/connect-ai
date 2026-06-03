@@ -1,13 +1,14 @@
 # 📋 통합 스케줄
-_업데이트: 2026. 6. 3. 오후 10:44:28_
+_업데이트: 2026. 6. 3. 오후 10:51:05_
 
 ## 🤖 에이전트 최근 활동
 ### 💻 코다리
-- [2026-06-03] auto_planner.py 및 trend_sniper.py 파일 생성 여부 확인 후 누락 시 경로 수정 작업 수행 → 산출물 sessions/2026-06-03T13-38/developer.md
-- [2026-06-03] GitHub 연동 자동화 스크립트를 작성하고, .gitignore 파일을 설정해 변경사항이 자동으로 푸시되도록 구성합니다. → 산출물 sessions/2026-06-03T13-42/developer.md
-- [2026-06-03] git pull 명령을 실행하여 GitHub의 최신 변경 사항을 로컬에 반영한 후, 충돌이 발생할 경우 수동으로 해결하고, 다시 git push하여 변경 사항을 업로드하세요. → 산출물 sessions/2026-06-03T13-44/developer.md
+- [2026-06-03] git pull 명령으로 GitHub 최신 변경사항 동기화 시도 → 산출물 sessions/2026-06-03T13-47/developer.md
+- [2026-06-03] 동기화 실패 시 발생한 충돌 파일 확인 및 수동 병합 수행 → 산출물 sessions/2026-06-03T13-47/developer.md
+- [2026-06-03] 필수 패키지 설치: git, github-cli, auto_planner.py 및 trend_sniper.py 실행에 필요한 의존성 설치 → 산출물 sessions/2026-06-03T13-50/developer.md
 ### 📱 영숙
 - [2026-06-03] 회사 정보에서 CEO 이름을 'Mona'로 수정해줘 → 산출물 sessions/2026-06-03T13-41/secretary.md
+- [2026-06-03] 회사 정보에서 CEO 이름을 'Mona'로 수정해주세요 → 산출물 sessions/2026-06-03T13-46/secretary.md
 ### ✍️ Writer
 - [2026-06-03] 직원 이름 10개 생성해줘. 산업별 특성 반영, 독창성 강조, 2~3자 이름 중심 → 산출물 sessions/2026-06-03T13-40/writer.md
 ### 🔍 Researcher

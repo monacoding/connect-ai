@@ -28,3 +28,19 @@ _세션: 2026-06-03T13-41_
 - GitHub Actions 워크플로우를 사용하여 자동 동기화 기능 구현
 - main 브랜치에 push 시 자동 커밋 및 푸시 설정
 _세션: 2026-06-03T13-42_
+
+## [2026-06-03] CEO 이름을 Mona 로 수정
+- CEO 이름을 'Mona'로 변경
+_세션: 2026-06-03T13-46_
+
+## [2026-06-03] Connect AI
+오후 10:46
+⚠️ [GitHub Sync 실패] GitHub에 새로운 내용이 있어요.
+- git mergetool 실행 후 .github/workflows/auto-sync.yml 수동 병합 수행
+- .github/workflows/old-sync.yml 삭제 및 불필요 파일 정리
+- package-lock.json과 package.json의 수정 내용 충돌 해결
+_세션: 2026-06-03T13-47_
+
+## [2026-06-03] 필수 패키지 설치해줘
+- Verify installation with auto_planner.py --version and trend_sniper.py --help.
+_세션: 2026-06-03T13-50_
