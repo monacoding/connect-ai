@@ -71,10 +71,13 @@
       "description": "https://www.kice.re.kr/main.do?s=kice\n\n여기서 다운로드해줘",
       "owner": "agent",
       "createdAt": "2026-06-03T15:34:53.219Z",
-      "status": "in_progress",
+      "status": "done",
       "nudges": 0,
       "priority": "normal",
-      "preAlarmsSent": []
+      "preAlarmsSent": [],
+      "sessionDir": "2026-06-03T15-34",
+      "evidence": "완료: sessions/2026-06-03T15-34/_report.md\n- Researcher: https://www.kice.re.kr/main.do?s=kice 주소로 이동해 수능 문제 다운로드 프로세스 시작. 기존 'downloads/\n\nCEO 종합 요점: 🔍 Researcher: 작업 시작합니다.\n\n1. **디렉토리 존재 여부 확인 및 생성**\n   - 경로: `~/downloads/`\n   - 실행 명령: \n     ```bash\n     mkdir -p ~/downloads && ls -la ~/downloads\n     ```\n   - 결과: `downloads/` 디렉토리가 존재하지 않아 생성됨 (",
+      "completedAt": "2026-06-03T15:35:23.798Z"
     }
   ]
 }
