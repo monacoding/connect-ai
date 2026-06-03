@@ -68,3 +68,11 @@ _세션: 2026-06-03T15-38_
 - Use smaller model to avoid memory issues
 - Ensure context length within model capacity
 _세션: 2026-06-03T15-42_
+
+## [2026-06-03] 현재 진행 중인 작업:
+1. 수능 문제 다운로드 (download_keaa.py 스크립트 개발 중)
+2. O
+- Use smaller models in LM Studio to reduce memory usage
+- Verify Ollama/LM Studio server is running
+- Set context length to ≥8192 in LM Studio
+_세션: 2026-06-03T15-44_
