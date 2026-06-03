@@ -1,11 +1,11 @@
 # 📋 통합 스케줄
-_업데이트: 2026. 6. 4. 오전 12:35:23_
+_업데이트: 2026. 6. 4. 오전 12:38:34_
 
 ## 🤖 에이전트 최근 활동
 ### 💻 코다리
-- [2026-06-03] 필수 패키지 설치: git, github-cli, auto_planner.py 및 trend_sniper.py 실행에 필요한 의존성 설치 → 산출물 sessions/2026-06-03T13-50/developer.md
 - [2026-06-03] requirements.txt에 명시된 모든 패키지를 pip install 명령으로 설치하고, GitHub Actions 워크플로우를 통해 자동 동기화 설정을 완료하세요. → 산출물 sessions/2026-06-03T13-54/developer.md
 - [2026-06-03] GitHub 자동 동기화 설정 완료 여부 및 패키지 설치 진행 상황 점검 → 산출물 sessions/2026-06-03T15-28/developer.md
+- [2026-06-03] https://www.suneung.re.kr/boardCnts/list.do?boardID=1500234&m=0403&s=suneung&searchStr= URL을 기반으로 download_keaa.py 스크립트에 크롤링 또는 API 로직 구현. 기존 파일이 비어 있으므로 데이터 수집 방식(크롤링/REST API) 결정 후 코드 작성 → 산출물 sessions/2026-06-03T15-38/developer.md
 ### 📱 영숙
 - [2026-06-03] 회사 정보에서 CEO 이름을 'Mona'로 수정해줘 → 산출물 sessions/2026-06-03T13-41/secretary.md
 - [2026-06-03] 회사 정보에서 CEO 이름을 'Mona'로 수정해주세요 → 산출물 sessions/2026-06-03T13-46/secretary.md

@@ -86,10 +86,13 @@
       "owner": "agent",
       "createdAt": "2026-06-03T15:37:59.287Z",
       "dueAt": "2026-06-05",
-      "status": "in_progress",
+      "status": "done",
       "nudges": 0,
       "priority": "normal",
-      "preAlarmsSent": []
+      "preAlarmsSent": [],
+      "sessionDir": "2026-06-03T15-38",
+      "evidence": "완료: sessions/2026-06-03T15-38/_report.md\n- 코다리: https://www.suneung.re.kr/boardCnts/list.do?boardID=1500234&m=0403&s=suneung&sea\n\nCEO 종합 요점: 💻 코다리: 작업 시작합니다. URL 기반 데이터 수집 로직 구현\n\n<create_file path=\"download_keaa.py\">\nimport os\nimport requests\nfrom bs4 import BeautifulSoup\nfrom urllib.parse import urljoin\n\ndef download_suneung_questions():",
+      "completedAt": "2026-06-03T15:38:34.379Z"
     }
   ]
 }
