@@ -233,7 +233,12 @@
         "connectAiLab.ollamaUrl": {
           "type": "string",
           "default": "http://127.0.0.1:11434",
-          "description": "🤖 AI 서버 주소 (보통 자동으로 잡히니 건드리지 않아도 됩니다)"
+          "description": "🤖 AI 서버 주소. 로컬 Ollama(11434), LM Studio(1234 또는 /v1), RunPod 프록시(https://POD_ID-PORT.proxy.runpod.net) 지원. npm run setup:runpod 로 RunPod 일괄 설정 가능."
+        },
+        "connectAiLab.llmApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "🔑 원격 LLM API 키 (선택). RunPod HTTP 프록시 등 Bearer 인증이 필요할 때 사용."
         },
         "connectAiLab.pythonPath": {
           "type": "string",
@@ -242,7 +247,7 @@
         },
         "connectAiLab.defaultModel": {
           "type": "string",
-          "default": "",
+          "default": "maternion/lfm2:8b-a1b",
           "description": "🧠 사용할 AI 모델 이름 (비워두면 설치된 모델 중 가장 작은 것이 자동 선택됨. 직접 지정 예: llama3.2:1b, gemma2:2b, qwen2.5:1.5b)"
         },
         "connectAiLab.requestTimeout": {
@@ -310,6 +315,7 @@
     }
   },
   "scripts": {
+    "setup:runpod": "node scripts/setup-runpod.mjs",
     "vscode:prepublish": "npm run compile",
     "compile": "esbuild src/extension.ts --bundle --platform=node --external:vscode --outfile=out/extension.js",
     "watch": "tsc -watch -p ./",

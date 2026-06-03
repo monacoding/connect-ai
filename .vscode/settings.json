@@ -1,0 +1,4 @@
+{
+  "connectAiLab.requestTimeout": 600,
+  "connectAiLab.streamFirstTokenTimeoutSec": 480
+}

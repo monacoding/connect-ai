@@ -659,9 +659,9 @@ function runCommandCaptured(
 function getConfig() {
     const cfg = vscode.workspace.getConfiguration('connectAiLab');
 
-    // ollamaUrl: only http(s)://localhost or 127.0.0.1 is meaningful here.
     let ollamaBase = (cfg.get<string>('ollamaUrl', 'http://127.0.0.1:11434') || '').trim();
     if (!/^https?:\/\//i.test(ollamaBase)) ollamaBase = 'http://127.0.0.1:11434';
+    ollamaBase = _normalizeLlmBase(ollamaBase);
 
     // 사용자가 선택한 모델은 그대로 유지. 빈 값이면 빈 문자열 반환 —
     // 호출 사이트가 _autoPickInstalledModel()로 실제 설치된 모델 중 하나를
@@ -680,8 +680,42 @@ function getConfig() {
         defaultModel,
         maxTreeFiles: 200,
         timeout: timeoutSec * 1000,
-        localBrainPath: cfg.get<string>('localBrainPath', '') || ''
+        localBrainPath: cfg.get<string>('localBrainPath', '') || '',
+        llmApiKey: (cfg.get<string>('llmApiKey', '') || '').trim()
     };
+}
+
+function _normalizeLlmBase(url: string): string {
+    return (url || '').trim().replace(/\/+$/, '');
+}
+
+function _isLocalLlmHost(url: string): boolean {
+    try {
+        const u = new URL(url);
+        return u.hostname === 'localhost' || u.hostname === '127.0.0.1';
+    } catch {
+        return true;
+    }
+}
+
+function _llmRequestHeaders(): Record<string, string> {
+    const key = (vscode.workspace.getConfiguration('connectAiLab').get<string>('llmApiKey', '') || '').trim();
+    return key ? { Authorization: `Bearer ${key}` } : {};
+}
+
+function _llmOpenAiRoot(base: string): string {
+    const b = _normalizeLlmBase(base);
+    return b.endsWith('/v1') ? b : `${b}/v1`;
+}
+
+function _llmModelsProbeUrl(base: string): string {
+    return _isLMStudioEngine(base) ? `${_llmOpenAiRoot(base)}/models` : `${_normalizeLlmBase(base)}/api/tags`;
+}
+
+function _llmChatUrl(base: string): string {
+    return _isLMStudioEngine(base)
+        ? `${_llmOpenAiRoot(base)}/chat/completions`
+        : `${_normalizeLlmBase(base)}/api/chat`;
 }
 
 /* v2.89.91 — 엔진 감지 헬퍼. 이전엔 `isLMStudio = ollamaBase.includes('1234')
@@ -1446,32 +1480,41 @@ async function listInstalledModels(): Promise<{ id: string; backend: 'ollama' | 
   const out: { id: string; backend: 'ollama' | 'lmstudio' }[] = [];
   const { ollamaBase } = getConfig();
   const isLMStudio = _isLMStudioEngine(ollamaBase);
-  const queryOllama = async () => {
+  const headers = _llmRequestHeaders();
+  const queryConfigured = async () => {
     try {
-      const r = await axios.get('http://127.0.0.1:11434/api/tags', { timeout: 1500 });
-      const models = r.data?.models || [];
-      for (const m of models) {
-        if (m?.name) out.push({ id: m.name, backend: 'ollama' });
+      const r = await axios.get(_llmModelsProbeUrl(ollamaBase), { timeout: 8000, headers });
+      if (isLMStudio) {
+        for (const m of r.data?.data || []) {
+          if (m?.id) out.push({ id: m.id, backend: 'lmstudio' });
+        }
+      } else {
+        for (const m of r.data?.models || []) {
+          if (m?.name) out.push({ id: m.name, backend: 'ollama' });
+        }
       }
-    } catch { /* ollama not running */ }
+    } catch { /* remote/local engine unreachable */ }
   };
-  const queryLMStudio = async () => {
+  const queryLocalFallback = async (lm: boolean) => {
+    if (!_isLocalLlmHost(ollamaBase)) return;
     try {
-      const r = await axios.get('http://127.0.0.1:1234/v1/models', { timeout: 1500 });
-      const models = r.data?.data || [];
-      for (const m of models) {
-        if (m?.id) out.push({ id: m.id, backend: 'lmstudio' });
+      const url = lm ? 'http://127.0.0.1:1234/v1/models' : 'http://127.0.0.1:11434/api/tags';
+      const r = await axios.get(url, { timeout: 1500 });
+      if (lm) {
+        for (const m of r.data?.data || []) {
+          if (m?.id) out.push({ id: m.id, backend: 'lmstudio' });
+        }
+      } else {
+        for (const m of r.data?.models || []) {
+          if (m?.name) out.push({ id: m.name, backend: 'ollama' });
+        }
       }
-    } catch { /* LM Studio not running */ }
+    } catch { /* local fallback not running */ }
   };
-  /* 활성 엔진만 쿼리. */
-  if (isLMStudio) {
-    await queryLMStudio();
-    /* LM Studio가 비어있고 Ollama가 살아있으면 fallback (양쪽 다 써본 사용자 케이스) */
-    if (out.length === 0) await queryOllama();
-  } else {
-    await queryOllama();
-    if (out.length === 0) await queryLMStudio();
+  await queryConfigured();
+  if (out.length === 0 && _isLocalLlmHost(ollamaBase)) {
+    if (isLMStudio) await queryLocalFallback(true);
+    else await queryLocalFallback(false);
   }
   return out;
 }
@@ -2004,7 +2047,8 @@ function readToolAutonomyLevel(agentId: string): number {
 async function _quickLLMCall(systemPrompt: string, userMsg: string, maxTokens = 64): Promise<string> {
     const { ollamaBase, defaultModel, timeout } = getConfig();
     const isLMStudio = _isLMStudioEngine(ollamaBase);
-    const apiUrl = isLMStudio ? `${ollamaBase}/v1/chat/completions` : `${ollamaBase}/api/chat`;
+    const apiUrl = _llmChatUrl(ollamaBase);
+    const headers = _llmRequestHeaders();
     const messages = [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMsg }
@@ -2012,11 +2056,11 @@ async function _quickLLMCall(systemPrompt: string, userMsg: string, maxTokens = 
     const tmo = Math.min(timeout || 60000, 60000);
     if (isLMStudio) {
         const body = { model: defaultModel, messages, stream: false, max_tokens: maxTokens, temperature: 0.2 };
-        const r = await axios.post(apiUrl, body, { timeout: tmo });
+        const r = await axios.post(apiUrl, body, { timeout: tmo, headers });
         return r.data?.choices?.[0]?.message?.content?.toString().trim() || '';
     }
     const body = { model: defaultModel, messages, stream: false, options: { num_predict: maxTokens, temperature: 0.2 } };
-    const r = await axios.post(apiUrl, body, { timeout: tmo });
+    const r = await axios.post(apiUrl, body, { timeout: tmo, headers });
     return r.data?.message?.content?.toString().trim() || '';
 }
 
@@ -7775,7 +7819,9 @@ function _recoverEngineUrlIfMismatched(context: vscode.ExtensionContext) {
                 return;
             }
             // Heuristics for which engine the model name belongs to.
-            const looksLMStudio = /\//.test(model) || /gguf/i.test(model);
+            // NOTE: Ollama registry-style names also contain '/' (e.g. maternion/lfm2:8b-a1b),
+            // so slash alone must NOT imply LM Studio.
+            const looksLMStudio = /gguf/i.test(model) || /^local-model\b/i.test(model);
             const urlIsOllama = !url || url.includes('11434');
             const urlIsLM = url.includes('1234') || url.includes('/v1');
             const mismatched = (looksLMStudio && urlIsOllama) || (!looksLMStudio && urlIsLM);
@@ -7834,7 +7880,14 @@ function _autoPickInstalledModelIfMissing() {
                     const r = await axios.get(`${url}/api/tags`, { timeout: 1500 });
                     const models = (r.data?.models || []) as Array<{ name: string; size: number }>;
                     if (models.length > 0) {
-                        // 가장 작은 모델부터 — 첫 호출 실패 진입 장벽 최소화
+                        // maternion/lfm2:8b-a1b가 설치돼 있으면 우선 연결 (요청 모델 고정).
+                        const preferred = models.find(m => (m.name || '').trim() === 'maternion/lfm2:8b-a1b');
+                        if (preferred) {
+                            await cfg.update('defaultModel', preferred.name, vscode.ConfigurationTarget.Global);
+                            console.log('Connect AI: auto-picked preferred Ollama model → maternion/lfm2:8b-a1b');
+                            return;
+                        }
+                        // fallback: 가장 작은 모델부터 — 첫 호출 실패 진입 장벽 최소화
                         models.sort((a, b) => (a.size || 0) - (b.size || 0));
                         await cfg.update('defaultModel', models[0].name, vscode.ConfigurationTarget.Global);
                         console.log(`Connect AI: auto-picked Ollama model → ${models[0].name} (${(models[0].size / 1e9).toFixed(2)} GB)`);
@@ -7954,9 +8007,33 @@ export function activate(context: vscode.ExtensionContext) {
             try {
                 let engineName = '';
                 let modelName = '';
-                
-                // Step 1: AI 엔진 자동 감지
-                try {
+                const cfgEarly = vscode.workspace.getConfiguration('connectAiLab');
+                const presetUrl = _normalizeLlmBase((cfgEarly.get<string>('ollamaUrl', '') || '').trim());
+                const presetModel = (cfgEarly.get<string>('defaultModel', '') || '').trim();
+                const remotePreset = presetUrl && !_isLocalLlmHost(presetUrl);
+
+                if (remotePreset) {
+                    engineName = 'RunPod/Remote';
+                    if (!presetModel) {
+                        try {
+                            const r = await axios.get(_llmModelsProbeUrl(presetUrl), {
+                                timeout: 8000,
+                                headers: _llmRequestHeaders()
+                            });
+                            const isLM = _isLMStudioEngine(presetUrl);
+                            const first = isLM ? r.data?.data?.[0]?.id : r.data?.models?.[0]?.name;
+                            if (first) {
+                                modelName = first;
+                                await cfgEarly.update('defaultModel', first, vscode.ConfigurationTarget.Global);
+                            }
+                        } catch { /* probe on next activation */ }
+                    } else {
+                        modelName = presetModel;
+                    }
+                }
+
+                // Step 1: AI 엔진 자동 감지 (로컬만 — RunPod 등 원격 URL은 덮어쓰지 않음)
+                if (!remotePreset) try {
                     const lmRes = await axios.get('http://127.0.0.1:1234/v1/models', { timeout: 2000 });
                     if (lmRes.data?.data?.length > 0) {
                         engineName = 'LM Studio';
@@ -7966,12 +8043,18 @@ export function activate(context: vscode.ExtensionContext) {
                     }
                 } catch {}
 
-                if (!engineName) {
+                if (!remotePreset && !engineName) {
                     try {
                         const ollamaRes = await axios.get('http://127.0.0.1:11434/api/tags', { timeout: 2000 });
                         if (ollamaRes.data?.models?.length > 0) {
                             engineName = 'Ollama';
-                            modelName = ollamaRes.data.models[0].name;
+                            const installed = (ollamaRes.data.models || []) as Array<{ name: string; size?: number }>;
+                            const preferred = installed.find(m => (m.name || '').trim() === 'maternion/lfm2:8b-a1b');
+                            if (preferred) {
+                                modelName = preferred.name;
+                            } else {
+                                modelName = installed[0]?.name || '';
+                            }
                             await vscode.workspace.getConfiguration('connectAiLab').update('ollamaUrl', 'http://127.0.0.1:11434', vscode.ConfigurationTarget.Global);
                             await vscode.workspace.getConfiguration('connectAiLab').update('defaultModel', modelName, vscode.ConfigurationTarget.Global);
                         }
@@ -8043,10 +8126,7 @@ export function activate(context: vscode.ExtensionContext) {
                         // 실제 AI 엔진으로 문제를 전달하여 답안을 받아옴
                         const config = getConfig();
                         const isLMStudio = _isLMStudioEngine(config.ollamaBase);
-                        let base = config.ollamaBase;
-                        if (base.endsWith('/')) base = base.slice(0, -1);
-                        if (isLMStudio && !base.endsWith('/v1')) base += '/v1';
-                        const targetUrl = isLMStudio ? base + '/chat/completions' : base + '/api/chat';
+                        const targetUrl = _llmChatUrl(config.ollamaBase);
 
                         const payload = {
                             model: config.defaultModel,
@@ -8054,7 +8134,10 @@ export function activate(context: vscode.ExtensionContext) {
                             stream: false
                         };
 
-                        const ollamaRes = await axios.post(targetUrl, payload, { timeout: config.timeout });
+                        const ollamaRes = await axios.post(targetUrl, payload, {
+                            timeout: config.timeout,
+                            headers: _llmRequestHeaders()
+                        });
                         const responseText = isLMStudio
                             ? ollamaRes.data.choices?.[0]?.message?.content || ''
                             : ollamaRes.data.message?.content || '';
@@ -8083,12 +8166,7 @@ export function activate(context: vscode.ExtensionContext) {
 
                         const config = getConfig();
                         const isLMStudio = _isLMStudioEngine(config.ollamaBase);
-
-                        let base = config.ollamaBase;
-                        if (base.endsWith('/')) base = base.slice(0, -1);
-                        if (isLMStudio && !base.endsWith('/v1')) base += '/v1';
-
-                        const targetUrl = isLMStudio ? base + '/chat/completions' : base + '/api/chat';
+                        const targetUrl = _llmChatUrl(config.ollamaBase);
 
                         const fullPrompt = `당신은 주어진 문제에 대해 오직 정답과 풀이 과정만을 도출하는 AI 에이전트입니다.\n\n[문제]\n${promptStr}\n\n위 문제에 대해 핵심 풀이와 정답만 답변하십시오.`;
 
@@ -8105,7 +8183,10 @@ export function activate(context: vscode.ExtensionContext) {
                         
                         let responseText = "";
                         try {
-                            const ollamaRes = await axios.post(targetUrl, payload, { timeout: getConfig().timeout });
+                            const ollamaRes = await axios.post(targetUrl, payload, {
+                                timeout: getConfig().timeout,
+                                headers: _llmRequestHeaders()
+                            });
                             
                             if (ollamaRes.data.error) {
                                 /* v2.89.91 — JSON 덤프 노출 금지. 사용자는 객체를 못 읽음. */
@@ -8123,7 +8204,7 @@ export function activate(context: vscode.ExtensionContext) {
                             const errDetail = isTimeout
                                 ? `⏱ 모델이 시간 안에 답을 못 냈어요. 다음 중 하나 시도하세요:\n  • 더 작은 모델로 변경 (gemma2:2b, qwen2.5:1.5b 등)\n  • 안티그래비티 설정에서 connectAiLab.requestTimeout을 600(10분) 이상으로`
                                 : isConn
-                                ? `🔌 AI 엔진에 연결 못함. Ollama/LM Studio가 켜져 있는지 확인해주세요.\n  • Ollama: 터미널에서 \`ollama serve\`\n  • LM Studio: 앱 실행 후 Local Server 시작`
+                                ? `🔌 AI 엔진에 연결 못함. RunPod Pod·프록시 URL·llmApiKey 또는 로컬 Ollama/LM Studio 상태를 확인해주세요.`
                                 : `AI 엔진 호출 실패: ${apiErr.message || '알 수 없는 원인'}`;
                             res.writeHead(500, { 'Content-Type': 'application/json' });
                             res.end(JSON.stringify({ error: errDetail }));
@@ -8157,12 +8238,7 @@ export function activate(context: vscode.ExtensionContext) {
 
                         const config = getConfig();
                         const isLMStudio = _isLMStudioEngine(config.ollamaBase);
-                        
-                        let base = config.ollamaBase;
-                        if (base.endsWith('/')) base = base.slice(0, -1);
-                        if (isLMStudio && !base.endsWith('/v1')) base += '/v1';
-                        
-                        const targetUrl = isLMStudio ? base + '/chat/completions' : base + '/api/chat';
+                        const targetUrl = _llmChatUrl(config.ollamaBase);
                         
                         const fullPrompt = `다음은 유저와 AI 에이전트 간의 시험 진행 로그(채팅 내용)입니다.\n\n[로그 시작]\n${historyText.slice(-6000)}\n[로그 종료]\n\n이 대화 내역 전체를 분석하여, 에이전트가 다음 4가지 역량 평가 문제를 얼마나 훌륭하게 수행했는지 0~100점의 정량적 채점을 수행하세요:\n1. Mathematical Computation (수학)\n2. Logical Reasoning (논리)\n3. Creative & Literary (창의력)\n4. Software Engineering (코딩)\n\n풀지 않은 문제가 있다면 0점 처리하세요. 결과는 반드시 아래 포맷의 순수 JSON이어야 합니다.\n{ "math": 점수, "logic": 점수, "creative": 점수, "code": 점수, "reason": "전체 결과에 대한 총평 코멘트 한글 1줄" }`;
                         
@@ -8174,7 +8250,10 @@ export function activate(context: vscode.ExtensionContext) {
                         
                         let responseText = "";
                         try {
-                            const ollamaRes = await axios.post(targetUrl, payload, { timeout: getConfig().timeout });
+                            const ollamaRes = await axios.post(targetUrl, payload, {
+                                timeout: getConfig().timeout,
+                                headers: _llmRequestHeaders()
+                            });
                             responseText = isLMStudio
                                 ? ollamaRes.data.choices?.[0]?.message?.content || ""
                                 : ollamaRes.data.message?.content || "";
@@ -8746,12 +8825,12 @@ export function activate(context: vscode.ExtensionContext) {
             /* 3. 설정된 baseUrl 도달성 */
             if (baseUrl) {
                 const isLM = _isLMStudioEngine(baseUrl);
-                const probe = isLM ? `${baseUrl.replace(/\/+$/, '')}/v1/models` : `${baseUrl.replace(/\/+$/, '')}/api/tags`;
+                const probe = _llmModelsProbeUrl(baseUrl);
                 try {
-                    await axios.get(probe, { timeout: 2500 });
+                    await axios.get(probe, { timeout: 8000, headers: _llmRequestHeaders() });
                     ok(`설정된 서버(${baseUrl}) 도달 OK`);
                 } catch (e: any) {
-                    err(`설정된 서버(${baseUrl}) 도달 실패. 설정에서 ollamaBase 확인.`);
+                    err(`설정된 서버(${baseUrl}) 도달 실패. connectAiLab.ollamaUrl · llmApiKey 확인.`);
                     if (lmstudioUp && !isLM) warn(`  → LM Studio가 1234에서 동작 중. ollamaBase를 'http://127.0.0.1:1234/v1' 로 바꾸세요.`);
                     if (ollamaUp && isLM) warn(`  → Ollama가 11434에서 동작 중. ollamaBase를 'http://127.0.0.1:11434' 로 바꾸세요.`);
                 }
@@ -18846,14 +18925,14 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             }
 
             let isLMStudio = _isLMStudioEngine(ollamaBase);
-            let apiUrl = isLMStudio ? `${ollamaBase}/v1/chat/completions` : `${ollamaBase}/api/chat`;
+            let apiUrl = _llmChatUrl(ollamaBase);
+            const llmHeaders = _llmRequestHeaders();
 
-            // Auto-Failover Logic: 유저가 설정을 안 건드렸더라도 Ollama가 죽어있으면 자동으로 LM Studio를 찾아갑니다!
-            if (!isLMStudio) {
+            // 로컬 Ollama만 LM Studio(1234)로 자동 우회. RunPod 등 원격 URL은 덮어쓰지 않음.
+            if (!isLMStudio && _isLocalLlmHost(ollamaBase)) {
                 try {
-                    await axios.get(`${ollamaBase}/api/tags`, { timeout: 1000 });
-                } catch (err: any) {
-                    // Ollama 연결 실패 시 LM Studio 1234 포트로 강제 우회
+                    await axios.get(`${ollamaBase}/api/tags`, { timeout: 1000, headers: llmHeaders });
+                } catch {
                     apiUrl = 'http://127.0.0.1:1234/v1/chat/completions';
                     isLMStudio = true;
                 }
@@ -18891,7 +18970,8 @@ class SidebarChatProvider implements vscode.WebviewViewProvider {
             const response = await axios.post(apiUrl, streamBody, {
                 timeout,
                 responseType: 'stream',
-                signal: this._abortController.signal
+                signal: this._abortController.signal,
+                headers: llmHeaders
             });
 
             // 🎬 Track which brain notes the AI mentions DURING streaming

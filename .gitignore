@@ -6,4 +6,5 @@ preview.html
 .DS_Store
 releases/
 .env
+.env.runpod
 *.bak.*
