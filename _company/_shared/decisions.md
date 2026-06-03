@@ -54,3 +54,7 @@ _세션: 2026-06-03T15-28_
 ## [2026-06-03] 수능 문제 다운로드 담당 직원을 찾아주세요. 현재 Researcher가 KEAA 웹사이트에서 2025 수능 
 - 다운로드 경로가 올바른지 확인하고, 필요시 경로 수정 요청
 _세션: 2026-06-03T15-33_
+
+## [2026-06-03] https://www.kice.re.kr/main.do?s=kice에서 수능 문제 다운로드해줘. 경로 확인 
+- Implement download logic in download_keaa.py using KICE API or crawling
+_세션: 2026-06-03T15-34_
