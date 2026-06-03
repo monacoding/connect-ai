@@ -1,11 +1,11 @@
 # 📋 통합 스케줄
-_업데이트: 2026. 6. 4. 오전 12:42:45_
+_업데이트: 2026. 6. 4. 오전 12:45:50_
 
 ## 🤖 에이전트 최근 활동
 ### 💻 코다리
-- [2026-06-03] GitHub 자동 동기화 설정 완료 여부 및 패키지 설치 진행 상황 점검 → 산출물 sessions/2026-06-03T15-28/developer.md
-- [2026-06-03] https://www.suneung.re.kr/boardCnts/list.do?boardID=1500234&m=0403&s=suneung&searchStr= URL을 기반으로 download_keaa.py 스크립트에 크롤링 또는 API 로직 구현. 기존 파일이 비어 있으므로 데이터 수집 방식(크롤링/REST API) 결정 후 코드 작성 → 산출물 sessions/2026-06-03T15-38/developer.md
 - [2026-06-03] OpenWeatherMap API를 사용하여 날씨 데이터 수집 기능 구현. API 키는 .env 파일에서 자동 로드하도록 설정하고, requests 라이브러리 사용. 예외 처리 포함. → 산출물 sessions/2026-06-03T15-42/developer.md
+- [2026-06-03] download_keaa.py의 크롤링 로직 완료 여부 확인 및 URL 파라미터, 예외 처리 점검 → 산출물 sessions/2026-06-03T15-44/developer.md
+- [2026-06-03] OpenWeatherMap API 키가 .env 파일에 올바르게 설정되었는지 확인하고, LM Studio 서버 실행 상태 및 모델 메모리 사용량 확인 → 산출물 sessions/2026-06-03T15-44/developer.md
 ### 📱 영숙
 - [2026-06-03] 회사 정보에서 CEO 이름을 'Mona'로 수정해줘 → 산출물 sessions/2026-06-03T13-41/secretary.md
 - [2026-06-03] 회사 정보에서 CEO 이름을 'Mona'로 수정해주세요 → 산출물 sessions/2026-06-03T13-46/secretary.md
