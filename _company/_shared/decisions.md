@@ -76,3 +76,9 @@ _세션: 2026-06-03T15-42_
 - Verify Ollama/LM Studio server is running
 - Set context length to ≥8192 in LM Studio
 _세션: 2026-06-03T15-44_
+
+## [2026-06-03] 수능 문제 다운부터 먼저해봐 왜 안되는지 원인 확인
+- download_keaa.py 스크립트 생성 및 URL 파라미터 수정
+- ~/Downloads/지식메모리/_company/downloads/ 디렉토리 생성
+- .env 파일 생성 및 API 키 설정
+_세션: 2026-06-03T15-56_
