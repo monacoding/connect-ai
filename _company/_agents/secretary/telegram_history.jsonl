@@ -33,3 +33,4 @@
 {"role":"user","text":"https://www.suneung.re.kr/boardCnts/list.do?boardID=1500234&m=0403&s=suneung&searchStr=\n\n여기 있잖아","ts":1780501058354}
 {"role":"assistant","text":"(CEO에게 전달) 📨 CEO에게 전달했어요 — 수능 문제 다운로드 URL 재확인 요청","ts":1780501080167}
 {"role":"user","text":"다운되었는지 확인","ts":1780501209767}
+{"role":"assistant","text":"현재 수능 문제 다운로드 작업은 코다리가 진행 중이에요. 다운로드 완료 시 바로 알려드릴게요","ts":1780501232036}
