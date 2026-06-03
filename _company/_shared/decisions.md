@@ -58,3 +58,7 @@ _세션: 2026-06-03T15-33_
 ## [2026-06-03] https://www.kice.re.kr/main.do?s=kice에서 수능 문제 다운로드해줘. 경로 확인 
 - Implement download logic in download_keaa.py using KICE API or crawling
 _세션: 2026-06-03T15-34_
+
+## [2026-06-03] KEAA 수능 문제 다운로드 작업 재시작 요청. 제공된 URL: https://www.suneung.re.k
+- download_keaa.py 스크립트에 URL 기반 크롤링 로직 구현
+_세션: 2026-06-03T15-38_
