@@ -7,3 +7,6 @@ _코다리 에이전트만 읽고 쓰는 개인 노트. 학습·교훈·자주 �
 - [2026-06-03] auto_planner.py 실행 오류를 분석하고 코드 수정하여 정상 작동하게 수정 → 산출물 sessions/2026-06-03T13-33/developer.md
 - [2026-06-03] trend_sniper.py 설정 파일을 확인하고 LLM 연결 및 키워드 설정을 완료 → 산출물 sessions/2026-06-03T13-33/developer.md
 - [2026-06-03] Google Calendar API 연동 설정을 검토하고 인증 토큰 및 웹hook을 조정하여 연결 문제 해결 → 산출물 sessions/2026-06-03T13-33/developer.md
+- [2026-06-03] auto_planner.py 및 trend_sniper.py 파일 생성 여부 확인 후 누락 시 경로 수정 작업 수행 → 산출물 sessions/2026-06-03T13-38/developer.md
+- [2026-06-03] GitHub 연동 자동화 스크립트를 작성하고, .gitignore 파일을 설정해 변경사항이 자동으로 푸시되도록 구성합니다. → 산출물 sessions/2026-06-03T13-42/developer.md
+- [2026-06-03] git pull 명령을 실행하여 GitHub의 최신 변경 사항을 로컬에 반영한 후, 충돌이 발생할 경우 수동으로 해결하고, 다시 git push하여 변경 사항을 업로드하세요. → 산출물 sessions/2026-06-03T13-44/developer.md
