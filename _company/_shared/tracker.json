@@ -59,11 +59,12 @@
       "createdAt": "2026-06-03T13:57:53.471Z",
       "dueAt": "2026-06-04",
       "status": "pending",
-      "nudges": 0,
+      "nudges": 1,
       "priority": "normal",
       "preAlarmsSent": [
         "t1d"
-      ]
+      ],
+      "_lastNudgeAt": "2026-06-04T01:59:18.028Z"
     },
     {
       "id": "20260603153453-34l3",
