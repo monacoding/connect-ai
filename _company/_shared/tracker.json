@@ -7,10 +7,10 @@
       "owner": "user",
       "createdAt": "2026-06-03T13:14:27.191Z",
       "status": "pending",
-      "nudges": 1,
+      "nudges": 2,
       "priority": "normal",
       "preAlarmsSent": [],
-      "_lastNudgeAt": "2026-06-04T14:07:24.079Z"
+      "_lastNudgeAt": "2026-06-05T13:32:17.519Z"
     },
     {
       "id": "20260603131537-iwsu",
@@ -19,10 +19,10 @@
       "owner": "user",
       "createdAt": "2026-06-03T13:15:37.202Z",
       "status": "pending",
-      "nudges": 1,
+      "nudges": 2,
       "priority": "normal",
       "preAlarmsSent": [],
-      "_lastNudgeAt": "2026-06-04T14:07:24.079Z"
+      "_lastNudgeAt": "2026-06-05T13:32:17.519Z"
     },
     {
       "id": "20260603132906-ah3j",
