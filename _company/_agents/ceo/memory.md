@@ -22,3 +22,4 @@ _CEO 에이전트만 읽고 쓰는 개인 노트. 학습·교훈·자주 쓰는 
 - [2026-06-03] 나는 외부 api 랑 연결 하고 싶어 먼저 시범적으로 날씨 api 를 연결할래 → 보고서 sessions/2026-06-03T15-42/_report.md
 - [2026-06-03] 현재 진행 중인 작업: 1. 수능 문제 다운로드 (download_keaa.py 스크립트 개발 중) 2. OpenWeatherMap API 연결 시도 (LLM 호출 실패)  확인 사항: - download_keaa.py의 크롤링 로직 완료 여부 - LM Studio에서 모델 로드 실패 원인 (메모리/서버 상태/컨텍스트 길이) - .env 파일의 API 키 설정 상태  추천 조치: 1. LM Studio에서 작은 모델로 재시도 2. Ollama/LM Studio 서버 실행 여부 확인 3. download_keaa.py의 URL 파라미
 - [2026-06-03] 수능 문제 다운부터 먼저해봐 왜 안되는지 원인 확인 → 보고서 sessions/2026-06-03T15-56/_report.md
+- [2026-06-06] 다른사이트에서 조사해서 다운받아줘 → 보고서 sessions/2026-06-06T03-40/_report.md
