@@ -7,10 +7,10 @@
       "owner": "user",
       "createdAt": "2026-06-03T13:14:27.191Z",
       "status": "pending",
-      "nudges": 2,
+      "nudges": 3,
       "priority": "normal",
       "preAlarmsSent": [],
-      "_lastNudgeAt": "2026-06-05T13:32:17.519Z"
+      "_lastNudgeAt": "2026-06-06T12:50:40.369Z"
     },
     {
       "id": "20260603131537-iwsu",
