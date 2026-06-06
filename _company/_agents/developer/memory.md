@@ -24,3 +24,4 @@ _코다리 에이전트만 읽고 쓰는 개인 노트. 학습·교훈·자주 �
 - [2026-06-06] 에이전트 파일 내에 수능 문제를 저장할 별도의 디렉토리를 생성하고, 각 연도별로 정리하여 저장할 수 있도록 파일 구조를 설정하세요. → 산출물 sessions/2026-06-06T03-43/developer.md
 - [2026-06-06] 현재 윈도우를 리로드하세요. → 산출물 sessions/2026-06-06T03-50/developer.md
 - [2026-06-06] 수능 문제를 저장할 '/Users/gimtaehyeong/Downloads/지식메모리/_company/downloads/' 디렉토리를 생성하세요. → 산출물 sessions/2026-06-06T03-58/developer.md
+- [2026-06-06] 수능 문제를 저장할 '/path/to/connect-ai/downloads/' 디렉토리를 생성하세요. → 산출물 sessions/2026-06-06T03-58/developer.md

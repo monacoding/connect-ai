@@ -1,17 +1,14 @@
-# 💻 코다리 — 수능 문제를 저장할 '/Users/gimtaehyeong/Downloads/지식메모리/_company/downloads/' 디렉토리를 생성하세요.
+# 💻 코다리 — 수능 문제를 저장할 '/path/to/connect-ai/downloads/' 디렉토리를 생성하세요.
 
-💻 코다리: 작업 시작합니다. 디렉토리를 생성하겠습니다.
+💻 코다리: 작업 시작합니다.
 
-<run_command>mkdir -p /Users/gimtaehyeong/Downloads/지식메모리/_company/downloads/</run_command> 
+해당 경로에 디렉토리를 생성하겠습니다. 우선, 해당 경로를 정확히 탐색해볼게요. 
 
-📊 평가: 완료 — 디렉토리가 성공적으로 생성되었습니다.
-📝 다음 단계: 생성된 디렉토리에 수능 문제 파일을 저장할 수 있도록 준비하세요.
+```sh
+<list_files path="/path/to/connect-ai/"/>
+```
 
 ---
-## 🛠️ 도구 실행 결과 (시스템 자동 실행)
+## 📁 파일 액션 결과
 
-### 🔧 실행: `mkdir -p /Users/gimtaehyeong/Downloads/지식메모리/_company/downloads/`
-```
-
-```
-_✅_
+⚠️ 목록 실패: /path/to/connect-ai/ — 디렉토리가 존재하지 않습니다.
