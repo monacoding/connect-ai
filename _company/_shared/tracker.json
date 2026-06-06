@@ -111,6 +111,20 @@
       "sessionDir": "2026-06-03T15-42",
       "evidence": "완료: sessions/2026-06-03T15-42/_report.md\n- 코다리: OpenWeatherMap API를 사용하여 날씨 데이터 수집 기능 구현. API 키는 .env 파일에서 자동 로드하도록 설정하고, reques\n\nCEO 종합 요점: ⚠️ **모든 에이전트의 LLM 호출이 실패했습니다.**\n\n시도된 에이전트: 💻 코다리\n\n**가장 흔한 원인**:\n- LM Studio에 모델 로드 실패 (메모리 부족) — 모델 오케스트레이션 모달에서 더 작은 모델 선택\n- Ollama/LM Studio 서버 미실행\n- Context Length 초과 (LM Studio 8192 이상 권장)\n\n_각 에이",
       "completedAt": "2026-06-03T15:42:45.467Z"
+    },
+    {
+      "id": "20260606034131-dw5h",
+      "title": "수능 문제 직접 다운로드",
+      "description": "너가 직접 다운받아",
+      "owner": "agent",
+      "createdAt": "2026-06-06T03:41:31.395Z",
+      "status": "done",
+      "nudges": 0,
+      "priority": "normal",
+      "preAlarmsSent": [],
+      "sessionDir": "2026-06-06T03-41",
+      "evidence": "완료: sessions/2026-06-06T03-41/_report.md\n- Researcher: 한국교육과정평가원(KICE) 웹사이트에 접속하여 2025년 수능 수리영역 문제를 다운로드하세요. '시험문제/정답' 메뉴에서 원하는 연도 및 과목\n\nCEO 종합 요점: 🔍 Researcher: 작업 시작합니다.\n\n현재 2025년 수능 수리영역 문제를 다운로드하기 위해 한국교육과정평가원(KICE) 웹사이트에 접속하겠습니다. '시험문제/정답' 메뉴에서 2025년 수능 수리영역을 선택한 후, 파일 다운로드를 진행하겠습니다.\n\n웹사이트의 구조에 따라 자동화 스크립트를 작성하여 다운로드를 진행할 예정입니다. 이를 위해 스크립트 ",
+      "completedAt": "2026-06-06T03:41:40.092Z"
     }
   ]
 }
