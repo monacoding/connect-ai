@@ -48,7 +48,7 @@
 
 - **CEO**: 작업 분배 (orchestrator)
 - **9명 specialist**: YouTube, Designer, Writer, Coder(코다리), Business(현빈), Researcher, Editor, Instagram, Secretary
-- **LLM 엔진**: Ollama / LM Studio (로컬)
+- **LLM 엔진**: OpenAI API
 - **두뇌**: 마크다운 폴더 (Git sync)
 
 ---
@@ -94,7 +94,7 @@
 
 | 항목 | Cloud LLM | Local LLM |
 |---|---|---|
-| 능력 | GPT-4o (1.8T) | qwen2.5 (7B) — 모바일 SLM |
+| 능력 | OpenAI API 모델 | 경량 로컬 SLM |
 | 응답 속도 | 200ms (API) | 30~500ms (로컬 추론) |
 | 비용 | $20+/월 | $0 |
 | 프라이버시 | ❌ 데이터 학습 | ✅ 로컬 |
@@ -152,8 +152,8 @@ answer = llm(system_prompt, user_question)
 └───────────────────────────────────────────────────────┘
                 ↓ LLM call
 ┌───────────────────────────────────────────────────────┐
-│   LM Studio / Ollama  (로컬 — 인터넷 X)               │
-│   qwen2.5-7b · llama-3.2-3b · gemma · ...             │
+│   OpenAI API                                             │
+│   gpt-5.1 · gpt-5-mini · ...                            │
 └───────────────────────────────────────────────────────┘
                 ↓ persistent
 ┌───────────────────────────────────────────────────────┐
@@ -387,8 +387,7 @@ Backend (Extension Host)
 └─ Python tools (subprocess)
 
 LLM Layer
-├─ LM Studio :1234 (default)
-├─ Ollama :11434 (fallback)
+├─ OpenAI API /v1 (default)
 └─ Stream + JSON-mode + scope check
 
 Storage
@@ -410,7 +409,7 @@ External APIs
 | 기능 | ChatGPT Plus | Claude Code | **Connect AI** |
 |---|---|---|---|
 | 가격 | $20/월 | $200/월 | **무료** |
-| 로컬 LLM | ❌ | ❌ | ✅ |
+| OpenAI API | ✅ | ✅ | ✅ |
 | 오프라인 | ❌ | ❌ | ✅ |
 | 멀티 에이전트 | ❌ | 부분 | ✅ 9명 |
 | 비주얼 사무실 | ❌ | ❌ | ✅ |
@@ -473,8 +472,8 @@ https://antigravity.google/
 # 2. Connect AI vsix 다운로드 + 설치
 code --install-extension connect-ai-lab-2.89.153.vsix --force
 
-# 3. LM Studio (또는 Ollama) 설치 + 모델 다운로드
-qwen2.5-7b-instruct 또는 llama-3.2-3b (16K context)
+# 3. OpenAI API 키 설정
+connectAiLab.llmApiKey 또는 OPENAI_API_KEY
 
 # 4. EZER AI 열기 → 키트 클릭 → 두뇌 주입
 
@@ -543,7 +542,7 @@ qwen2.5-7b-instruct 또는 llama-3.2-3b (16K context)
 → Prefetch + shortcut + strict guard 로 보완. 7B 모델로도 충분.
 
 **Q2. 정말 무료?**  
-→ vsix 무료 + LM Studio 무료 + Ollama 무료. PayPal/Gemini 만 운영자가 발급 (둘 다 무료 tier).
+→ vsix 무료 + OpenAI API 키는 운영자가 발급. PayPal/Gemini 등 외부 API는 필요 시 별도 설정.
 
 **Q3. 매출 어디서?**  
 → 키트로 만든 사이트 (사주·게임 등) 에서 PayPal 결제. 운영자 계정으로 입금.

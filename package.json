@@ -1,8 +1,8 @@
 {
   "name": "connect-ai-lab",
   "displayName": "Connect AI — AI 1인 기업 · 나만의 에이전트 팀 · 제2의 두뇌",
-  "description": "AI 1인 기업가를 위한 워크스페이스. 나만의 AI 에이전트 팀과 제2의 두뇌가 한 곳에서 — CEO + 전문 에이전트들이 내 지식·결정 로그·메모리를 컨텍스트로 24시간 미션 향해 자동으로 일합니다. 100% 로컬·오프라인·무료.",
-  "version": "2.89.157",
+  "description": "AI 1인 기업가를 위한 워크스페이스. 나만의 AI 에이전트 팀과 제2의 두뇌가 한 곳에서 — CEO + 전문 에이전트들이 내 지식·결정 로그·메모리를 컨텍스트로 OpenAI API 기반으로 일합니다.",
+  "version": "2.89.159",
   "publisher": "connectailab",
   "license": "MIT",
   "icon": "assets/icon.png",
@@ -20,13 +20,9 @@
   ],
   "keywords": [
     "ai",
-    "local",
-    "ollama",
-    "lmstudio",
-    "gemma",
-    "llama",
-    "deepseek",
-    "offline",
+    "openai",
+    "chatgpt",
+    "gpt",
     "agent",
     "agent-team",
     "second-brain",
@@ -117,7 +113,7 @@
       },
       {
         "command": "connectAiLab.diagnoseConnection",
-        "title": "🔍 LLM 연결 진단 (Ollama / LM Studio)",
+        "title": "🔍 LLM 연결 진단 (OpenAI API)",
         "category": "Connect AI",
         "icon": "$(pulse)"
       },
@@ -150,6 +146,12 @@
         "title": "우리 회사 (팀 + 오늘 + 채널)",
         "category": "Connect AI",
         "icon": "$(organization)"
+      },
+      {
+        "command": "connectAiLab.hanwhaOcean.open",
+        "title": "Hanwha Ocean: Work Hub 열기",
+        "category": "Connect AI",
+        "icon": "$(azure)"
       },
       {
         "command": "connectAiLab.apiConnections.open",
@@ -232,13 +234,13 @@
       "properties": {
         "connectAiLab.ollamaUrl": {
           "type": "string",
-          "default": "http://127.0.0.1:11434",
-          "description": "🤖 AI 서버 주소. 로컬 Ollama(11434), LM Studio(1234 또는 /v1), RunPod 프록시(https://POD_ID-PORT.proxy.runpod.net) 지원. npm run setup:runpod 로 RunPod 일괄 설정 가능."
+          "default": "https://api.openai.com/v1",
+          "description": "🤖 OpenAI-compatible API 서버 주소. 기본값은 OpenAI API입니다. 일반적으로 https://api.openai.com/v1 그대로 사용하세요."
         },
         "connectAiLab.llmApiKey": {
           "type": "string",
           "default": "",
-          "description": "🔑 원격 LLM API 키 (선택). RunPod HTTP 프록시 등 Bearer 인증이 필요할 때 사용."
+          "description": "🔑 OpenAI API 키. 비워두면 환경변수 OPENAI_API_KEY를 사용합니다."
         },
         "connectAiLab.pythonPath": {
           "type": "string",
@@ -247,8 +249,8 @@
         },
         "connectAiLab.defaultModel": {
           "type": "string",
-          "default": "maternion/lfm2:8b-a1b",
-          "description": "🧠 사용할 AI 모델 이름 (비워두면 설치된 모델 중 가장 작은 것이 자동 선택됨. 직접 지정 예: llama3.2:1b, gemma2:2b, qwen2.5:1.5b)"
+          "default": "gpt-5.1",
+          "description": "🧠 사용할 OpenAI API 모델 이름. 기본값: gpt-5.1"
         },
         "connectAiLab.requestTimeout": {
           "type": "number",
@@ -280,6 +282,11 @@
           "default": "",
           "description": "🔗 회사 깃허브 저장소 URL — 회사 폴더를 두뇌와 별도 저장소로 백업할 때 사용. 회사 폴더가 두뇌 안 nested면(기본) 비워두세요(이미 두뇌 repo에 같이 들어감). 회사를 별도 위치(detached)로 분리한 경우에만 의미 있음. 명령 팔레트의 'Connect AI: 회사 GitHub 연결'로도 설정."
         },
+        "connectAiLab.gitAutoSyncEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "☁️ GitHub 자동 동기화 — 두뇌/회사 폴더 파일이 변경되면 몇 초 뒤 자동으로 git add/commit/pull/push를 시도합니다. GitHub 저장소 URL이 설정되어 있어야 원격 백업됩니다."
+        },
         "connectAiLab.companyDir": {
           "type": "string",
           "default": "",
@@ -302,7 +309,11 @@
         },
         "connectAiLab.secretaryBridgeMode": {
           "type": "string",
-          "enum": ["off", "output_only", "full"],
+          "enum": [
+            "off",
+            "output_only",
+            "full"
+          ],
           "enumDescriptions": [
             "Off — 비서는 텔레그램에서만 활동. 사이드바는 CEO와 직접 대화 (현재 동작)",
             "출력만 — specialist 산출물 끝에 비서가 한 줄로 사장님께 정리 카드 추가",
@@ -310,12 +321,40 @@
           ],
           "default": "off",
           "description": "📱 비서 브릿지 모드 — 비서를 사람과 AI 회사 사이의 단일 통로로 만들지 결정. 차이를 직접 체감하면서 멀티에이전트 라우팅 패턴을 학습할 수 있어요."
+        },
+        "connectAiLab.hanwhaOcean.copilotEndpoint": {
+          "type": "string",
+          "default": "",
+          "description": "🚢 Hanwha Ocean Work Hub에서 호출할 Copilot Studio/Teams 에이전트 HTTP 엔드포인트. 비워두면 OpenAI API로 응답합니다."
+        },
+        "connectAiLab.hanwhaOcean.copilotSecret": {
+          "type": "string",
+          "default": "",
+          "description": "🔐 Copilot Studio/Power Automate HTTP 엔드포인트 Bearer 토큰 또는 공유 비밀. 저장 전 회사 보안 정책을 확인하세요."
+        },
+        "connectAiLab.hanwhaOcean.teamsAppUrl": {
+          "type": "string",
+          "default": "",
+          "description": "💬 Teams 탭/앱/채널 딥링크 URL. Hanwha Ocean Work Hub의 Teams 버튼에서 엽니다."
+        },
+        "connectAiLab.hanwhaOcean.powerAppUrl": {
+          "type": "string",
+          "default": "",
+          "description": "📱 Power Apps 앱 URL. Hanwha Ocean Work Hub의 Power App 버튼에서 엽니다."
+        },
+        "connectAiLab.hanwhaOcean.powerAutomateFlowUrl": {
+          "type": "string",
+          "default": "",
+          "description": "⚡ Power Automate HTTP 트리거 URL. Hanwha Ocean Work Hub에서 요청을 업무 플로우로 보낼 때 호출합니다."
         }
       }
     }
   },
   "scripts": {
+    "setup:openai": "node scripts/setup-runpod.mjs",
     "setup:runpod": "node scripts/setup-runpod.mjs",
+    "setup:telegram": "node scripts/setup-telegram.mjs",
+    "telegram:bridge": "node scripts/telegram-bridge.mjs",
     "vscode:prepublish": "npm run compile",
     "compile": "esbuild src/extension.ts --bundle --platform=node --external:vscode --outfile=out/extension.js",
     "watch": "tsc -watch -p ./",
@@ -329,7 +368,7 @@
     "typescript": "^5.1.3"
   },
   "dependencies": {
-    "axios": "^1.15.0",
+    "axios": "^1.17.0",
     "jsdom": "^29.0.2"
   }
 }

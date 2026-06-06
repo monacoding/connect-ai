@@ -45,8 +45,8 @@
   ],
   "configuration": {
     "engine_options": {
-      "default_model": "gemma4:e2b",
-      "ollama_url": "http://127.0.0.1:11434"
+      "default_model": "gpt-5.1",
+      "ollama_url": "https://api.openai.com/v1"
     },
     "operational_settings": {
       "temperature": 0.7,

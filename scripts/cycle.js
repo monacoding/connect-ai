@@ -3,7 +3,7 @@
  * Standalone 24h autonomous cycle for Connect AI Lab.
  *
  * Runs OUTSIDE the VS Code extension lifecycle so the company keeps working
- * even when the IDE is closed. Reads the brain folder, asks the local LLM to
+ * even when the IDE is closed. Reads the brain folder, asks the OpenAI API to
  * decide one priority task, executes it as a CEO planner round, writes the
  * output to <brain>/sessions/<ts>/, and appends to the daily conversation log.
  *
@@ -12,13 +12,13 @@
  *
  * Requirements:
  *   - Node 18+
- *   - Ollama OR LM Studio running locally
+ *   - OpenAI API key (OPENAI_API_KEY)
  *   - axios (npm i axios)
  *
  * Usage:
  *   node cycle.js                          # uses defaults
  *   BRAIN_DIR=~/my-brain node cycle.js     # custom brain folder
- *   OLLAMA_URL=http://127.0.0.1:11434 MODEL=gemma4:e2b node cycle.js
+ *   OPENAI_API_KEY=sk-... MODEL=gpt-5.1 node cycle.js
  */
 
 const fs = require('fs');
@@ -28,9 +28,9 @@ const axios = require('axios');
 
 // ───────────────────────── Config (env-overridable) ─────────────────────────
 const BRAIN_DIR = (process.env.BRAIN_DIR || path.join(os.homedir(), '.connect-ai-brain')).replace(/^~/, os.homedir());
-const OLLAMA_URL = process.env.OLLAMA_URL || 'http://127.0.0.1:11434';
-const LMSTUDIO_URL = process.env.LMSTUDIO_URL || 'http://127.0.0.1:1234';
-const MODEL = process.env.MODEL || 'gemma4:e2b';
+const OPENAI_BASE_URL = (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
+const MODEL = process.env.MODEL || process.env.OPENAI_MODEL || 'gpt-5.1';
 const TIMEOUT_MS = parseInt(process.env.TIMEOUT_MS || '180000', 10);
 
 // ───────────────────────── Helpers ─────────────────────────
@@ -38,26 +38,16 @@ const safeRead = (p) => { try { return fs.readFileSync(p, 'utf-8'); } catch { re
 const today = () => new Date().toISOString().slice(0, 10);
 const nowTs = () => new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
 
-async function detectEngine() {
-    try { await axios.get(`${OLLAMA_URL}/api/tags`, { timeout: 1500 }); return { kind: 'ollama', url: OLLAMA_URL }; } catch {}
-    try { await axios.get(`${LMSTUDIO_URL}/v1/models`, { timeout: 1500 }); return { kind: 'lmstudio', url: LMSTUDIO_URL }; } catch {}
-    throw new Error('No local LLM detected. Ensure Ollama or LM Studio is running.');
-}
-
-async function callLLM(engine, system, user) {
-    if (engine.kind === 'lmstudio') {
-        const r = await axios.post(`${engine.url}/v1/chat/completions`, {
-            model: MODEL, stream: false, max_tokens: 2048, temperature: 0.6,
-            messages: [ { role: 'system', content: system }, { role: 'user', content: user } ],
-        }, { timeout: TIMEOUT_MS });
-        return r.data.choices?.[0]?.message?.content || '';
-    }
-    const r = await axios.post(`${engine.url}/api/chat`, {
-        model: MODEL, stream: false,
+async function callLLM(system, user) {
+    if (!OPENAI_API_KEY) throw new Error('OPENAI_API_KEY is required.');
+    const r = await axios.post(`${OPENAI_BASE_URL}/chat/completions`, {
+        model: MODEL, stream: false, max_tokens: 2048, temperature: 0.6,
         messages: [ { role: 'system', content: system }, { role: 'user', content: user } ],
-        options: { num_ctx: 8192, num_predict: 2048, temperature: 0.6 },
-    }, { timeout: TIMEOUT_MS });
-    return r.data.message?.content || '';
+    }, {
+        timeout: TIMEOUT_MS,
+        headers: { Authorization: `Bearer ${OPENAI_API_KEY}` },
+    });
+    return r.data.choices?.[0]?.message?.content || '';
 }
 
 // ───────────────────────── Cycle body ─────────────────────────
@@ -66,8 +56,7 @@ async function runCycle() {
         console.error(`✗ Brain folder not initialized at ${BRAIN_DIR}. Open the IDE extension once to set up.`);
         process.exit(1);
     }
-    const engine = await detectEngine();
-    console.log(`✓ Engine: ${engine.kind} @ ${engine.url} · model: ${MODEL}`);
+    console.log(`✓ Engine: OpenAI API @ ${OPENAI_BASE_URL} · model: ${MODEL}`);
 
     const identity = safeRead(path.join(BRAIN_DIR, '_shared', 'identity.md')).slice(0, 1500);
     const goals = safeRead(path.join(BRAIN_DIR, '_shared', 'goals.md')).slice(0, 2000);
@@ -100,7 +89,7 @@ ${decisions}
     const userMsg = `현재 시각: ${new Date().toISOString()}. 사용자가 자리를 비웠습니다. 회사 가치를 높이는 한 걸음을 진행하세요.`;
 
     console.log('· Calling LLM...');
-    const out = await callLLM(engine, sysPrompt, userMsg);
+    const out = await callLLM(sysPrompt, userMsg);
     if (!out.trim()) throw new Error('Empty LLM response.');
 
     // Save to a session folder

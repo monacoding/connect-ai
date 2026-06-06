@@ -31,8 +31,8 @@
 |---------|------|--------|
 | `connectAiLab.localBrainPath` | 로컬 지식 폴더 절대 경로 | `""` (비면 `~/.connect-ai-brain`) |
 | `connectAiLab.secondBrainRepo` | 깃허브 저장소 URL | `""` |
-| `connectAiLab.ollamaUrl` | AI 서버 주소 | `http://127.0.0.1:11434` |
-| `connectAiLab.defaultModel` | AI 모델 이름 | `gemma4:e2b` |
+| `connectAiLab.ollamaUrl` | OpenAI-compatible API 서버 주소 | `https://api.openai.com/v1` |
+| `connectAiLab.defaultModel` | OpenAI API 모델 이름 | `gpt-5.1` |
 | `connectAiLab.requestTimeout` | AI 응답 대기 시간(초) | `300` |
 
 **⚠️ 설정은 `vscode.ConfigurationTarget.Global`로 저장됨** (워크스페이스가 아닌 전역)

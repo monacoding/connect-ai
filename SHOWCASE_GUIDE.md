@@ -18,7 +18,7 @@ curl -s http://127.0.0.1:4825/ping | python3 -m json.tool
 ```
 
 **필수 확인:**
-- [ ] LM Studio 모델 로드됨 (qwen2.5-7b·llama-3.2-3b 권장, Context 16K+)
+- [ ] OpenAI API 키 설정됨 (`connectAiLab.llmApiKey` 또는 `OPENAI_API_KEY`)
 - [ ] PayPal 자격증명 입력됨 (외부 연결 패널)
 - [ ] 두뇌의 키트 폴더 존재: `chick-game-kit`, `landing-kit`, `neon-survivor-kit`
 - [ ] EZER AI 빌드 호스팅됨 (또는 로컬 실행)
@@ -167,7 +167,7 @@ curl -s http://127.0.0.1:4825/ping | python3 -m json.tool
 | 문제 | 즉시 해결 |
 |---|---|
 | 익스텐션 아이콘 안 보임 | `Cmd+Shift+P` → `View: Reset View Locations` |
-| 코다리가 멈춤 | LM Studio Context 16K 이상 확인 + 재시도 |
+| 코다리가 멈춤 | OpenAI API 키·모델 권한·요청 한도 확인 + 재시도 |
 | `<read_file>` 노출 | v2.89.146 이상 + reload — shortcut 강제 발동 |
 | PayPal 403 | App Features → ☑ Transaction Search → Save Changes |
 | 가상 사무실 캐릭터 안 보임 | 명령 팔레트 → "Connect AI: 가상 사무실" |
@@ -210,7 +210,7 @@ ls ~/.antigravity/extensions/ | grep connect-ai-lab | grep -v "2.89.150" | \
 2. **AI 회사 9명** — 단일 챗봇이 아닌 팀
 3. **시각적 협업** — 캐릭터들이 walk + 광선 + chatter
 4. **실제 수익** — AI 코드 → PayPal 결제 → 매출 추적
-5. **무료** — vsix 다운로드 + 로컬 LLM + 100% 무료
+5. **간단한 설정** — vsix 다운로드 + OpenAI API 키 설정
 
 ---
 

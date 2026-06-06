@@ -5,7 +5,7 @@
 <h1 align="center">Connect AI v2 (P-Reinforce)</h1>
 
 <p align="center">
-  <strong>100% Local · 100% Offline · Autonomous Knowledge Engine</strong><br/>
+  <strong>OpenAI API · Autonomous Knowledge Engine</strong><br/>
   VS Code / Cursor 확장 프로그램으로, 당신의 낡은 IDE를 최상위 에이전트 대학(A.U)의 심장으로 진화시킵니다.
 </p>
 
@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/version-2.1.30-blue" alt="version" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="license" />
   <img src="https://img.shields.io/badge/integration-Agent_University-purple" alt="integration" />
-  <img src="https://img.shields.io/badge/engine-Ollama%20%7C%20LM%20Studio-orange" alt="engine" />
+  <img src="https://img.shields.io/badge/engine-OpenAI%20API-orange" alt="engine" />
 </p>
 
 ---
@@ -37,8 +37,8 @@ Agent University 웹 플랫폼과 실시간으로 통신합니다.
 로컬 PC에서 파일 생성이 일어나는 순간, 에이전트가 스스로 GitHub 저장소에 `git add`, `commit`, `push`를 수행합니다. 
 마스터는 이제 지루한 푸시 커맨드를 입력할 필요가 없습니다.
 
-### 4. 🔗 설치형 모델 자동 감지 (Dynamic Model Detection)
-Ollama 또는 LM Studio에 설치된 모델을 내부 API(`v1/models`)를 호출하여 자동 감지하고, UI의 스위치 보드(드롭다운)에 연결합니다. 어떤 모델을 쓸지 번거롭게 입력하지 마십시오.
+### 4. 🔗 OpenAI API 기반 모델 라우팅
+Connect AI는 기본적으로 OpenAI API(`https://api.openai.com/v1`)와 `gpt-5.1` 모델을 사용합니다. API 키만 설정하면 모든 채팅·에이전트·자동화 호출이 외부 API로 처리됩니다.
 
 ---
 
@@ -59,6 +59,9 @@ Ollama 또는 LM Studio에 설치된 모델을 내부 API(`v1/models`)를 호출
 
 ## 📥 Installation (설치 방법)
 
+개발자가 현재 코드 구조를 빠르게 파악해야 한다면 [DEVELOPMENT_GUIDE.md](DEVELOPMENT_GUIDE.md)를 먼저 읽으세요.
+사무실 화면의 좌표·구역명·배경을 바꾸려면 [OFFICE_LAYOUT_GUIDE.md](OFFICE_LAYOUT_GUIDE.md)를 참고하세요.
+
 ### A.U 멤버십 유저 (Recommended)
 1. 상단 탭의 [Releases](https://github.com/wonseokjung/connect-ai/releases) 메뉴로 진입.
 2. 최신 `v2.1.30.vsix` 파일을 다운로드.
@@ -77,26 +80,17 @@ npx vsce package
 
 ## ⚙️ Engine Setup (엔진 설정 방법)
 
-### ✅ LM Studio (Apple Silicon, Windows) - 권장
-1. [lmstudio.ai](https://lmstudio.ai/) 에서 설치
-2. Gemma 3, Llama 3 또는 Qwen Coder 등 원하는 모델 로드
-3. **Developer 탭(좌측 `<>` 메뉴)** 진입 후 **Start Server** 클릭
-4. Connect AI의 ⚙️ 채팅방 설정에서 엔진을 "LM Studio"로 선택 (자동 모델 인덱싱 완료)
-
-### ✅ Ollama (Mac, Linux)
-```bash
-brew install ollama
-ollama pull gemma3   # 원하는 모델 풀링
-```
-Connect AI에서 설정만 "Ollama"로 바꿔주시면 끝납니다.
+### ✅ OpenAI API
+1. [OpenAI Platform](https://platform.openai.com/api-keys)에서 API 키를 발급합니다.
+2. VS Code 설정의 `connectAiLab.llmApiKey`에 키를 입력하거나 환경변수 `OPENAI_API_KEY`를 설정합니다.
+3. 기본 서버 주소는 `https://api.openai.com/v1`, 기본 모델은 `gpt-5.1`입니다.
 
 ---
 
-## 🔒 Privacy (완벽한 보안)
+## 🔒 Privacy
 
-- **Zero Cloud API:** 당신의 코드는 외부 클라우드 통신망을 타지 않습니다.
-- **Zero Telemetry:** 모든 연산력은 100% Local Inference 환경에서 이루어집니다.
-- 기업 보안 등급에 준하는 극강의 밀폐형 로컬 지식망 생성을 보장합니다.
+- LLM 추론은 OpenAI API로 전송됩니다. 민감한 데이터는 전송 전 회사 정책에 맞게 검토하세요.
+- 로컬 지식 파일과 회사 상태는 사용자가 지정한 두뇌 폴더에 저장됩니다.
 
 ---
 

@@ -34,8 +34,11 @@ def main():
         print(f"  텔레그램          : 연결됨 (chat {tg_chat})")
     else:
         print(f"  텔레그램          : 미설정 (보고 알림 비활성)")
-    print(f"  Ollama URL        : {cfg.get('OLLAMA_URL') or 'http://127.0.0.1:11434'}")
-    print(f"  분석 모델          : {cfg.get('MODEL') or '(자동 선택)'}")
+    openai_key = (cfg.get('OPENAI_API_KEY') or os.environ.get('OPENAI_API_KEY') or '').strip()
+    masked_openai = (openai_key[:4] + "…" + openai_key[-3:]) if len(openai_key) >= 8 else ("(빈 값)" if not openai_key else "(짧음)")
+    print(f"  OpenAI API 주소   : {cfg.get('OPENAI_BASE_URL') or 'https://api.openai.com/v1'}")
+    print(f"  OpenAI API 키     : {masked_openai}")
+    print(f"  분석 모델          : {cfg.get('MODEL') or 'gpt-5.1'}")
     if not api:
         print("\n⚠️  API 키가 비어있어요. 다른 도구들이 동작하지 않습니다.")
         print("   발급: https://console.cloud.google.com/ → YouTube Data API v3")

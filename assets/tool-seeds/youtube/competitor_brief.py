@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # version: telegram_v3
 """Competitor Brief — for every channel in COMPETITOR_CHANNELS, pulls their
-recent top-performing videos and asks the local LLM for a *prescriptive*
+recent top-performing videos and asks the OpenAI API for a *prescriptive*
 brief: what should YOU do next, given what's working for them.
 
-Reads youtube_account.json (api key, competitors, ollama, model) and
+Reads youtube_account.json (api key, competitors, OpenAI API key, model) and
 competitor_brief.json (volume)."""
 import os, json, sys, time, datetime
 
@@ -57,8 +57,9 @@ def main():
         sys.exit(1)
     top_n = int(cfg.get("TOP_N_PER_CHANNEL", 5))
     lookback = int(cfg.get("LOOKBACK_DAYS", 30))
-    ollama_url = (acct.get("OLLAMA_URL") or "http://127.0.0.1:11434").rstrip("/")
-    model = acct.get("MODEL") or ""
+    openai_base = (acct.get("OPENAI_BASE_URL") or "https://api.openai.com/v1").rstrip("/")
+    openai_key = (acct.get("OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY") or "").strip()
+    model = acct.get("MODEL") or "gpt-5.1"
 
     try:
         from googleapiclient.discovery import build
@@ -100,18 +101,9 @@ def main():
     data_text = "\n".join(f"[{r['channel']}] {r['views']:,}회 · {r['published']} · {r['title']}"
                            for r in snapshot[:25])
 
-    if not model:
-        try:
-            r = requests.get(f"{ollama_url}/api/tags", timeout=5)
-            r.raise_for_status()
-            models = [m["name"] for m in r.json().get("models", [])]
-            if not models:
-                print("❌ 로컬 LLM에 모델이 없어요.")
-                sys.exit(1)
-            model = models[0]
-        except Exception as e:
-            print(f"❌ LLM 연결 실패: {e}")
-            sys.exit(1)
+    if not openai_key:
+        print("❌ OPENAI_API_KEY 비어있음.")
+        sys.exit(1)
 
     prompt = f"""당신은 유튜브 알고리즘 전략가입니다. 아래는 경쟁 채널들의 최근 {lookback}일간 상위 영상 데이터입니다.
 
@@ -132,13 +124,14 @@ def main():
 ## 4) 한 줄 요약
 - 다음 영상의 핵심 컨셉을 한 문장으로
 """
-    print("🧠 [LLM 분석 중...]")
+    print(f"🧠 [OpenAI API 분석 중... 모델: {model}]")
     try:
-        r = requests.post(f"{ollama_url}/api/generate",
-                          json={"model": model, "prompt": prompt, "stream": False},
+        r = requests.post(f"{openai_base}/chat/completions",
+                          headers={"Authorization": f"Bearer {openai_key}"},
+                          json={"model": model, "messages": [{"role": "user", "content": prompt}], "stream": False, "max_tokens": 2048},
                           timeout=240)
         r.raise_for_status()
-        brief = r.json().get("response", "").strip()
+        brief = r.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
     except Exception as e:
         print(f"❌ LLM 실패: {e}")
         sys.exit(1)

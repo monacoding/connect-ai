@@ -1,4 +1,7 @@
 {
   "connectAiLab.requestTimeout": 600,
-  "connectAiLab.streamFirstTokenTimeoutSec": 480
+  "connectAiLab.streamFirstTokenTimeoutSec": 480,
+  "connectAiLab.ollamaUrl": "https://api.openai.com/v1",
+  "connectAiLab.defaultModel": "gpt-5.1",
+  "connectAiLab.localBrainPath": "/Users/gimtaehyeong/AI_BRAIN"
 }

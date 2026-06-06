@@ -575,7 +575,7 @@ function showAgentModelRoutingModal(data){
   if (installedCount === 0) {
     /* 빈 케이스 — 기존 helpBlock에서 처리 */
   } else if (installedCount === 1) {
-    diagnosticBlock = '<div class="amr-diag warn">설치된 모델 1개 — 모든 에이전트가 동일 모델 사용. 분산 추론을 위해 다른 사이즈 모델 추가 권장:<br/><code>ollama pull llama3.2:3b</code> (라우팅)<br/><code>ollama pull qwen2.5:7b</code> (분석)</div>';
+    diagnosticBlock = '<div class="amr-diag ok">OpenAI API 모델 1개 — 모든 에이전트가 동일 외부 API 모델을 사용합니다.</div>';
   } else if (distinctCount <= 1 && installedCount >= 2) {
     diagnosticBlock = '<div class="amr-diag warn">모델 ' + installedCount + '개 설치됨, 현재 매핑은 단일 모델만 사용 중. <strong>자동 오케스트레이션</strong> 버튼 누르면 역할별 분배.</div>';
   } else if (distinctCount >= 2) {
@@ -593,8 +593,8 @@ function showAgentModelRoutingModal(data){
       + '</div>';
   }).join('');
   const helpBlock = noModels
-    ? '<div class="amr-empty">설치된 모델이 0개입니다.<br/><br/>터미널에서 한 번 실행:<br/><code>ollama pull qwen2.5:7b</code><br/>또는 LM Studio에서 모델 다운로드 후 모델 로드.</div>'
-    : '<div class="amr-help">비워두면 기본 모델 사용. 작은 모델(3B)은 라우팅에, 큰 모델(32B+)은 분석·창작에 적합. 모델 전환 시 첫 호출이 2~5초 느려집니다.</div>';
+    ? '<div class="amr-empty">OpenAI 모델 정보를 불러오지 못했습니다.<br/><br/>connectAiLab.llmApiKey 또는 OPENAI_API_KEY를 확인하세요.</div>'
+    : '<div class="amr-help">비워두면 기본 OpenAI 모델을 사용합니다. 모델별 비용과 권한은 OpenAI 계정 설정을 따릅니다.</div>';
   /* v2.89.36 — 시스템 사양 배너. 사용자 머신이 어떤 모델까지 안전한지 한 눈에. */
   let specsBlock = '';
   if (specs) {
@@ -614,14 +614,14 @@ function showAgentModelRoutingModal(data){
     +   '<button class="adm-close amr-close" type="button">×</button>'
     +   '<div class="amr-head">'
     +     '<div class="amr-title">모델 오케스트레이션</div>'
-    +     '<div class="amr-sub">설치 모델 ' + installed.length + '개 감지 · 에이전트별 최적 LLM 자동 분배 · 추론 워크로드 분산</div>'
+    +     '<div class="amr-sub">OpenAI API 모델 ' + installed.length + '개 감지 · 에이전트별 모델 라우팅</div>'
     +   '</div>'
     +   specsBlock
     +   helpBlock
     +   diagnosticBlock
     +   '<div class="amr-rows">' + rows + '</div>'
     +   '<div class="amr-actions">'
-    +     '<button type="button" class="amr-trending" title="내 PC에 받아서 쓸 수 있는 로컬 LLM 목록 — HuggingFace 공개 데이터(다운로드 수·태그) 기반">로컬 LLM 카탈로그</button>'
+    +     '<button type="button" class="amr-trending" title="참고용 공개 모델 목록">모델 카탈로그</button>'
     +     '<button type="button" class="amr-auto" title="시스템이 설치된 모델 + 에이전트 역할 분석해서 최적 매핑 자동 배정">자동 오케스트레이션</button>'
     +     '<button type="button" class="amr-save">저장</button>'
     +     '<button type="button" class="amr-cancel">취소</button>'
@@ -665,8 +665,7 @@ function showAgentModelRoutingModal(data){
   }
 }
 
-/* v2.89.30 — 인기 모델 탐색 모달. HuggingFace 다운로드 순위로 텍스트 LLM
-   리스트업. 각 항목엔 다운로드 수·태그·HF 링크 + Ollama pull 명령 복사 버튼. */
+/* v2.89.30 — 인기 모델 탐색 모달. 현재는 참고용 HuggingFace 목록만 표시. */
 let _trendingModelsBackdrop = null;
 function showTrendingModelsModal(models, error){
   if(_trendingModelsBackdrop) return;
@@ -679,8 +678,6 @@ function showTrendingModelsModal(models, error){
     if(n >= 1_000) return (n/1_000).toFixed(1) + 'K';
     return String(n);
   }
-  /* HuggingFace 모델 ID에서 Ollama pull용 추측 변환:
-     "meta-llama/Llama-3.3-70B-Instruct" → 사용자한테 "ollama 라이브러리에서 검색" 안내 */
   function buildRows(){
     if(error) return '<div class="tmd-error">조회 실패: ' + esc(error) + '</div>';
     if(!models || models.length === 0) return '<div class="tmd-empty">결과 없음</div>';
@@ -708,10 +705,10 @@ function showTrendingModelsModal(models, error){
     + '<div class="tmd-modal">'
     +   '<button class="adm-close tmd-close" type="button">×</button>'
     +   '<div class="tmd-head">'
-    +     '<div class="tmd-title">로컬 LLM 카탈로그</div>'
-    +     '<div class="tmd-sub">내 PC에 받아서 오프라인으로 쓸 수 있는 텍스트 모델 — 다운로드 많은 순</div>'
+    +     '<div class="tmd-title">모델 카탈로그</div>'
+    +     '<div class="tmd-sub">참고용 공개 모델 목록 — 현재 Connect AI 실행은 OpenAI API를 사용합니다</div>'
     +   '</div>'
-    +   '<div class="tmd-info-block">받는 법: <code>ollama.com/library</code>에서 모델 이름으로 검색 후 <code>ollama pull &lt;name&gt;</code>. HuggingFace ID와 Ollama 라이브러리 이름은 살짝 다를 수 있어요 (예: <code>meta-llama/Llama-3.3</code> → <code>llama3.3</code>).</div>'
+    +   '<div class="tmd-info-block">현재 Connect AI는 로컬 모델 다운로드 없이 OpenAI API 모델을 사용합니다. 기본값은 <code>gpt-5.1</code>입니다.</div>'
     +   '<div class="tmd-list">' + buildRows() + '</div>'
     +   '<div class="tmd-actions-bottom">'
     +     '<button type="button" class="tmd-cancel">닫기</button>'
@@ -725,9 +722,9 @@ function showTrendingModelsModal(models, error){
   bd.querySelector('.tmd-close').addEventListener('click', close);
   bd.querySelector('.tmd-cancel').addEventListener('click', close);
   bd.addEventListener('click', e => { if(e.target === bd) close(); });
-  /* 부모 모델 라우팅 모달의 "로컬 LLM 카탈로그" 버튼 복원 */
+  /* 부모 모델 라우팅 모달의 "모델 카탈로그" 버튼 복원 */
   const tb = document.querySelector('.amr-trending');
-  if(tb){ tb.disabled = false; tb.textContent = '로컬 LLM 카탈로그'; }
+  if(tb){ tb.disabled = false; tb.textContent = '모델 카탈로그'; }
 }
 
 /* v2.89.24 — 보고 스케줄 편집 모달. 시각·요일·액션을 행 단위로 추가/제거.

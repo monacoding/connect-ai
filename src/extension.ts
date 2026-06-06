@@ -502,6 +502,9 @@ function gitRun(args: string[], cwd: string, timeout = 30000): { status: number 
 /** Module-scoped lock so auto-sync and manual sync never run concurrently against the same brain. */
 let _autoSyncRunning = false;
 let _companySyncRunning = false; /* separate lock — brain & company can sync in parallel */
+let _gitAutoSyncWatchers: vscode.Disposable[] = [];
+let _gitAutoSyncBrainTimer: NodeJS.Timeout | null = null;
+let _gitAutoSyncCompanyTimer: NodeJS.Timeout | null = null;
 
 /* v2.89.152 — 크로스플랫폼 + 자동 감지 + 사용자 override.
    이전 v2.89.88 은 단순 `python3` (맥) / `python` (윈도우) 분기였는데:
@@ -651,23 +654,22 @@ function runCommandCaptured(
 }
 
 // ============================================================
-// Connect AI — Full Agentic Local AI for VS Code
-// 100% Offline · File Create · File Edit · Terminal · Multi-file Context
+// Connect AI — Full Agentic AI for VS Code
+// OpenAI API · File Create · File Edit · Terminal · Multi-file Context
 // ============================================================
+
+const OPENAI_API_BASE = 'https://api.openai.com/v1';
+const OPENAI_DEFAULT_MODEL = 'gpt-5.1';
 
 // Settings are read from VS Code configuration (File > Preferences > Settings)
 function getConfig() {
     const cfg = vscode.workspace.getConfiguration('connectAiLab');
 
-    let ollamaBase = (cfg.get<string>('ollamaUrl', 'http://127.0.0.1:11434') || '').trim();
-    if (!/^https?:\/\//i.test(ollamaBase)) ollamaBase = 'http://127.0.0.1:11434';
+    let ollamaBase = (cfg.get<string>('ollamaUrl', OPENAI_API_BASE) || '').trim();
+    if (!/^https?:\/\//i.test(ollamaBase)) ollamaBase = OPENAI_API_BASE;
     ollamaBase = _normalizeLlmBase(ollamaBase);
 
-    // 사용자가 선택한 모델은 그대로 유지. 빈 값이면 빈 문자열 반환 —
-    // 호출 사이트가 _autoPickInstalledModel()로 실제 설치된 모델 중 하나를
-    // 자동 선택. 디폴트 'gemma4:e2b' 같은 큰 모델을 강제해서 저사양 PC가
-    // 첫 호출에서 실패하던 문제 방지.
-    const defaultModel = (cfg.get<string>('defaultModel', '') || '').trim();
+    const defaultModel = (cfg.get<string>('defaultModel', OPENAI_DEFAULT_MODEL) || '').trim() || OPENAI_DEFAULT_MODEL;
 
     // requestTimeout: clamp to [5, 1800] seconds, then convert to ms.
     const rawTimeout = cfg.get<number>('requestTimeout', 300);
@@ -681,7 +683,7 @@ function getConfig() {
         maxTreeFiles: 200,
         timeout: timeoutSec * 1000,
         localBrainPath: cfg.get<string>('localBrainPath', '') || '',
-        llmApiKey: (cfg.get<string>('llmApiKey', '') || '').trim()
+        llmApiKey: (cfg.get<string>('llmApiKey', '') || process.env.OPENAI_API_KEY || '').trim()
     };
 }
 
@@ -699,7 +701,7 @@ function _isLocalLlmHost(url: string): boolean {
 }
 
 function _llmRequestHeaders(): Record<string, string> {
-    const key = (vscode.workspace.getConfiguration('connectAiLab').get<string>('llmApiKey', '') || '').trim();
+    const key = (vscode.workspace.getConfiguration('connectAiLab').get<string>('llmApiKey', '') || process.env.OPENAI_API_KEY || '').trim();
     return key ? { Authorization: `Bearer ${key}` } : {};
 }
 
@@ -709,26 +711,21 @@ function _llmOpenAiRoot(base: string): string {
 }
 
 function _llmModelsProbeUrl(base: string): string {
-    return _isLMStudioEngine(base) ? `${_llmOpenAiRoot(base)}/models` : `${_normalizeLlmBase(base)}/api/tags`;
+    return `${_llmOpenAiRoot(base)}/models`;
 }
 
 function _llmChatUrl(base: string): string {
-    return _isLMStudioEngine(base)
-        ? `${_llmOpenAiRoot(base)}/chat/completions`
-        : `${_normalizeLlmBase(base)}/api/chat`;
+    return `${_llmOpenAiRoot(base)}/chat/completions`;
 }
 
-/* v2.89.91 — 엔진 감지 헬퍼. 이전엔 `isLMStudio = ollamaBase.includes('1234')
-   || ollamaBase.includes('v1')` 가 13군데 동일하게 박혀 있었음. LM Studio가
-   포트나 경로 컨벤션을 바꾸면 13곳 모두 고쳐야 했고, 한 곳을 빠뜨리면
-   다른 엔진으로 라우팅되는 사고. 한 함수로 통합. */
+function _extractChatCompletionText(data: any): string {
+    return data?.choices?.[0]?.message?.content?.toString().trim() || '';
+}
+
+/* Legacy name kept to avoid broad call-site churn. All LLM calls now use the
+   OpenAI-compatible Chat Completions API. */
 function _isLMStudioEngine(ollamaBase: string): boolean {
-    /* v2.89.98 — 진짜 원인 잡힘! v2.89.91 sed 일괄 치환이 이 함수의 본체까지
-       `_isLMStudioEngine(ollamaBase)`로 바꿔버려 자기 자신을 무한 호출 →
-       Maximum call stack. 사용자가 chat·corp 양쪽 모드에서 어떤 LLM 호출도
-       이 헬퍼를 거치니 전 라인이 마비됐었음. 원래 로직 복원: 1234 포트 또는
-       /v1 경로면 LM Studio. */
-    return ollamaBase.includes('1234') || ollamaBase.includes('v1');
+    return true;
 }
 
 /* v2.89.66 — _getBrainDir, _isBrainDirExplicitlySet, getCompanyDir, COMPANY_SUBDIR,
@@ -888,8 +885,8 @@ const WORLD_LAYOUT = {
   // Visit-zones for idle wandering / autonomous behavior. Office-only.
   // Cafe + garden zones were rolled back along with their assets.
   zones: [
-    { id: 'office-meeting', name: '회의실',  emoji: '📊',  x: 49, y: 78 },  // office bottom-left meeting room
-    { id: 'office-copier',  name: '복사실',  emoji: '🖨️', x: 70, y: 18 },  // office top printer
+    { id: 'office-meeting', name: '회의실',  emoji: '📊',  x: 49, y: 78 },
+    { id: 'office-copier',  name: '복사실',  emoji: '🖨️', x: 70, y: 18 },
   ] as WorldZone[],
 };
 
@@ -1320,37 +1317,16 @@ function isAgentTogglable(id: string): boolean {
   return OPTIONAL_AGENTS_DEFAULT.has(id) || !!LOCKED_AGENTS_DEFAULT[id];
 }
 
-/* v2.89.112 — 코다리(developer) 활성화 시 시니어 코더 모델 추천. 한 번만 표시 (active.json
-   에 _coder_recommended 플래그 기록). 사용자 시스템 메모리 추측해서 적합한 모델 추천:
-   < 8GB → qwen2.5-coder:1.5b 또는 7b
-   8~16GB → qwen2.5-coder:14b
-   > 16GB → deepseek-coder-v2:16b 또는 qwen2.5-coder:32b */
+/* 코다리(developer) 활성화 시 OpenAI 코딩 모델 안내. */
 function _maybeRecommendCoderModel(webview: vscode.Webview) {
   try {
     const active = readActiveAgents();
     if (active._coder_recommended) return;
-    let recommendation: { name: string; size: string; reason: string };
-    try {
-      const totalGB = Math.round(os.totalmem() / (1024 ** 3));
-      if (totalGB >= 32) {
-        recommendation = { name: 'deepseek-coder-v2:16b', size: '10GB', reason: `시스템 RAM ${totalGB}GB — 최고급 코더 모델 가능` };
-      } else if (totalGB >= 16) {
-        recommendation = { name: 'qwen2.5-coder:14b', size: '9GB', reason: `시스템 RAM ${totalGB}GB — 권장 코더 모델` };
-      } else if (totalGB >= 8) {
-        recommendation = { name: 'qwen2.5-coder:7b', size: '4.4GB', reason: `시스템 RAM ${totalGB}GB — 균형 잡힌 코더 모델` };
-      } else {
-        recommendation = { name: 'qwen2.5-coder:1.5b', size: '1GB', reason: `시스템 RAM ${totalGB}GB — 작은 코더 모델 (메모리 절약)` };
-      }
-    } catch {
-      recommendation = { name: 'qwen2.5-coder:14b', size: '9GB', reason: '권장 코더 모델' };
-    }
     const note =
       `\n💻 **코다리 코딩 능력 강화 팁**\n` +
-      `현재 일반 모델로 동작합니다. 코딩 전용 모델로 바꾸면 결과 품질이 크게 올라가요.\n\n` +
-      `**추천: \`${recommendation.name}\`** (${recommendation.size}) — ${recommendation.reason}\n\n` +
-      `설치:\n` +
-      `\`\`\`\nollama pull ${recommendation.name}\n\`\`\`\n` +
-      `설치 후 사이드바 위 모델 선택 메뉴에서 고르세요. (이 안내는 한 번만 표시됩니다)`;
+      `이제 로컬 오픈소스 모델 대신 OpenAI API를 사용합니다.\n\n` +
+      `**추천 기본 모델: \`${OPENAI_DEFAULT_MODEL}\`**\n\n` +
+      `설정에서 \`connectAiLab.llmApiKey\`에 OpenAI API 키를 넣으면 모든 에이전트가 외부 API로 동작합니다.`;
     try { webview.postMessage({ type: 'systemNote', value: note }); } catch { /* ignore */ }
     /* 플래그 기록 — active.json 은 사실 mixed type (메타 키 _migrated 등) 보관 가능 */
     (active as any)._coder_recommended = true;
@@ -1362,8 +1338,7 @@ function _maybeRecommendCoderModel(webview: vscode.Webview) {
   } catch { /* never block */ }
 }
 
-/* v2.89.26 — 에이전트별 모델 라우팅. CEO·YouTube·디자이너 등 각자 다른
-   로컬 LLM 사용 (작은 모델은 라우팅·결정에, 큰 모델은 분석·창작에).
+/* 에이전트별 OpenAI 모델 라우팅.
    설정 파일: _shared/agent_models.json. 비어있으면 default 모델 사용. */
 function _agentModelsPath(): string {
   return path.join(getCompanyDir(), '_shared', 'agent_models.json');
@@ -1392,46 +1367,21 @@ function getAgentModel(agentId: string, fallback: string): string {
 /* v2.89.65 — getSystemSpecs + estimateModelMemoryGB + SystemSpecs type 모두 ./system-specs.ts 로 이동. */
 import { SystemSpecs, getSystemSpecs, estimateModelMemoryGB } from './system-specs';
 
-/* v2.89.27 — 모델 자동 오케스트레이션. 설치된 모델 + 에이전트 역할을 매칭해서
-   최적 배정 추천. 사용자는 "✨ 자동 추천" 버튼 한 번으로 완성된 매핑 받음. */
+/* OpenAI 모델 자동 오케스트레이션. */
 type ModelTier = 'tiny' | 'small' | 'medium' | 'large' | 'vision' | 'coder';
 function _classifyModel(modelId: string): ModelTier[] {
   const id = modelId.toLowerCase();
   const tiers: ModelTier[] = [];
-  /* 비전 모델 — 이미지 입력 가능 */
-  if (/vision|llava|vl\b|glm.*v|gemma.?4.*e|qwen.?2.?vl|moondream/i.test(id)) tiers.push('vision');
-  /* 코드 특화 */
-  if (/coder|code-?(?:llama|qwen)/i.test(id)) tiers.push('coder');
-  /* 사이즈 — 우선순위: 명시된 파라미터 → 모델 이름 패턴 */
-  const paramM = id.match(/(\d+(?:\.\d+)?)\s*b\b/);
-  let paramB = paramM ? parseFloat(paramM[1]) : 0;
-  /* MoE 모델은 활성 파라미터 기준으로 분류 (예: "24b a2b" = 활성 2B) */
-  const moeM = id.match(/a(\d+(?:\.\d+)?)b/);
-  if (moeM) paramB = parseFloat(moeM[1]);
-  /* LFM 패밀리 + Phi + Gemma E2B 같이 작은 모델 패턴 */
-  const isExplicitlyTiny = /lfm2\.?5|gemma.?4.?e2b|phi-?3|llama.?3\.?2.?(?:1b|3b)|qwen.?2\.?5.?(?:0\.5b|1\.5b|3b)/i.test(id);
-  if (isExplicitlyTiny || (paramB > 0 && paramB <= 3)) tiers.push('tiny');
-  else if (paramB <= 8) tiers.push('small');
-  else if (paramB <= 14) tiers.push('medium');
-  else if (paramB > 14) tiers.push('large');
-  else tiers.push('small'); /* 사이즈 알 수 없으면 small로 안전 폴백 */
+  if (/vision|image/i.test(id)) tiers.push('vision');
+  if (/codex|code/i.test(id)) tiers.push('coder');
+  if (/nano/i.test(id)) tiers.push('tiny');
+  else if (/mini/i.test(id)) tiers.push('small');
+  else tiers.push('large');
   return tiers;
 }
 function _autoOrchestrateModelMap(installed: { id: string; backend: string }[]): Record<string, string> {
   if (installed.length === 0) return {};
-  /* v2.89.36 — 메모리 안전 필터. 사용자 머신이 못 돌리는 큰 모델은 후보에서 제외.
-     이전엔 16GB Mac에 70B 모델 할당해서 LM Studio가 죽었음. */
-  const specs = getSystemSpecs();
-  const safeInstalled = installed.filter(m => {
-    const need = estimateModelMemoryGB(m.id);
-    return need <= specs.safeModelBudgetGB;
-  });
-  /* 안전 필터로 다 잘려나가면 제일 작은 1개라도 남기기 (그래야 사용자가 일단 돌릴 수 있음) */
-  const candidates = safeInstalled.length > 0 ? safeInstalled : (
-    installed.length > 0
-      ? [installed.slice().sort((a, b) => estimateModelMemoryGB(a.id) - estimateModelMemoryGB(b.id))[0]]
-      : []
-  );
+  const candidates = installed;
   /* 모델별 tier 분류 + 우선순위 정렬 */
   const byTier: Record<ModelTier, string[]> = { tiny: [], small: [], medium: [], large: [], vision: [], coder: [] };
   for (const m of candidates) {
@@ -1465,56 +1415,21 @@ function _autoOrchestrateModelMap(installed: { id: string; backend: string }[]):
   return map;
 }
 
-/* v2.89.67 — 사용자가 선택한 AI 엔진(설정의 ollamaUrl 포트로 판별)만 쿼리.
-   이전엔 Ollama+LM Studio 둘 다 무조건 쿼리해서 한 엔진만 쓰는 사용자한테
-   다른 엔진 모델이 오케스트레이션 드롭다운에 섞여 나옴 → 모델 선택해도
-   "model not found" 에러. 이제 활성 엔진의 모델만 보여줌.
-
-   엔진 판별: ollamaUrl 설정 포트로
-   - 1234 또는 'v1' 경로 포함 → LM Studio
-   - 11434 또는 그 외 → Ollama (default)
-
-   양 엔진 둘 다 띄운 사용자(드물지만) 위해 fallback: 활성 엔진이 비어있으면
-   다른 엔진도 시도. */
-async function listInstalledModels(): Promise<{ id: string; backend: 'ollama' | 'lmstudio' }[]> {
-  const out: { id: string; backend: 'ollama' | 'lmstudio' }[] = [];
+async function listInstalledModels(): Promise<{ id: string; backend: 'openai' }[]> {
+  const out: { id: string; backend: 'openai' }[] = [];
   const { ollamaBase } = getConfig();
-  const isLMStudio = _isLMStudioEngine(ollamaBase);
   const headers = _llmRequestHeaders();
-  const queryConfigured = async () => {
+  if (headers.Authorization) {
     try {
       const r = await axios.get(_llmModelsProbeUrl(ollamaBase), { timeout: 8000, headers });
-      if (isLMStudio) {
-        for (const m of r.data?.data || []) {
-          if (m?.id) out.push({ id: m.id, backend: 'lmstudio' });
-        }
-      } else {
-        for (const m of r.data?.models || []) {
-          if (m?.name) out.push({ id: m.name, backend: 'ollama' });
-        }
+      for (const m of r.data?.data || []) {
+        if (m?.id && /^gpt-|^o\d|^chatgpt-/i.test(m.id)) out.push({ id: m.id, backend: 'openai' });
       }
-    } catch { /* remote/local engine unreachable */ }
-  };
-  const queryLocalFallback = async (lm: boolean) => {
-    if (!_isLocalLlmHost(ollamaBase)) return;
-    try {
-      const url = lm ? 'http://127.0.0.1:1234/v1/models' : 'http://127.0.0.1:11434/api/tags';
-      const r = await axios.get(url, { timeout: 1500 });
-      if (lm) {
-        for (const m of r.data?.data || []) {
-          if (m?.id) out.push({ id: m.id, backend: 'lmstudio' });
-        }
-      } else {
-        for (const m of r.data?.models || []) {
-          if (m?.name) out.push({ id: m.name, backend: 'ollama' });
-        }
-      }
-    } catch { /* local fallback not running */ }
-  };
-  await queryConfigured();
-  if (out.length === 0 && _isLocalLlmHost(ollamaBase)) {
-    if (isLMStudio) await queryLocalFallback(true);
-    else await queryLocalFallback(false);
+    } catch { /* API key missing/invalid or models endpoint unreachable */ }
+  }
+  const defaults = [OPENAI_DEFAULT_MODEL, 'gpt-5-mini', 'gpt-5-nano', 'gpt-5.1-chat-latest'];
+  for (const id of defaults) {
+    if (!out.some(m => m.id === id)) out.push({ id, backend: 'openai' });
   }
   return out;
 }
@@ -2046,7 +1961,6 @@ function readToolAutonomyLevel(agentId: string): number {
 
 async function _quickLLMCall(systemPrompt: string, userMsg: string, maxTokens = 64): Promise<string> {
     const { ollamaBase, defaultModel, timeout } = getConfig();
-    const isLMStudio = _isLMStudioEngine(ollamaBase);
     const apiUrl = _llmChatUrl(ollamaBase);
     const headers = _llmRequestHeaders();
     const messages = [
@@ -2054,14 +1968,9 @@ async function _quickLLMCall(systemPrompt: string, userMsg: string, maxTokens = 
         { role: 'user', content: userMsg }
     ];
     const tmo = Math.min(timeout || 60000, 60000);
-    if (isLMStudio) {
-        const body = { model: defaultModel, messages, stream: false, max_tokens: maxTokens, temperature: 0.2 };
-        const r = await axios.post(apiUrl, body, { timeout: tmo, headers });
-        return r.data?.choices?.[0]?.message?.content?.toString().trim() || '';
-    }
-    const body = { model: defaultModel, messages, stream: false, options: { num_predict: maxTokens, temperature: 0.2 } };
+    const body = { model: defaultModel, messages, stream: false, max_tokens: maxTokens, temperature: 0.2 };
     const r = await axios.post(apiUrl, body, { timeout: tmo, headers });
-    return r.data?.message?.content?.toString().trim() || '';
+    return _extractChatCompletionText(r.data);
 }
 
 const CEO_CLASSIFIER_PROMPT = _loadPrompt('ceo-classifier.md');
@@ -2527,7 +2436,7 @@ async function handleTelegramViaSecretary(userText: string): Promise<void> {
        sidebar dialogues, autonomous agent chatter, dispatch results. Lets
        Secretary answer cross-channel follow-ups like "developer가 사이트 어떻게
        하고 있어?" without re-dispatching. Conservative size (1500 chars) to
-       avoid blowing past LM Studio's default context window. */
+       avoid blowing past the configured model context window. */
     const companyLog = readRecentConversations(1500);
     if (companyLog && companyLog.trim()) {
         ctxBlock += companyLog;
@@ -7044,7 +6953,7 @@ function _seedYouTubeTrendSniper(toolsDir: string) {
     TARGET_KEYWORDS: ['유튜브 자동화', 'AI 비즈니스', '마케팅 트렌드', '생산성 툴'],
   }, null, 2);
   const md = _loadToolSeed('youtube/trend_sniper.md');
-  /* v2.89.70 sentinel — LM Studio + Ollama 자동 감지 추가됨. 이전 사용자는 자동 업그레이드. */
+  /* v2.89.70 sentinel — LLM 설정 스키마 자동 업그레이드. */
   _seedFileForceUpgrade(path.join(toolsDir, 'trend_sniper.py'), py, 'is_lm_studio');
   _seedFile(path.join(toolsDir, 'trend_sniper.json'), json);
   _seedFile(path.join(toolsDir, 'trend_sniper.md'), md);
@@ -7107,8 +7016,9 @@ function _seedYouTubeAccount(toolsDir: string) {
     COMPETITOR_CHANNELS: [],
     TELEGRAM_BOT_TOKEN: '',
     TELEGRAM_CHAT_ID: '',
-    OLLAMA_URL: 'http://127.0.0.1:11434',
-    MODEL: '',
+    OPENAI_BASE_URL: OPENAI_API_BASE,
+    OPENAI_API_KEY: '',
+    MODEL: OPENAI_DEFAULT_MODEL,
     _schema: {
       YOUTUBE_API_KEY: { label: '🔑 YouTube Data API 키', hint: 'Google Cloud Console → API & Services → 사용자 인증 정보에서 발급. 트렌드/통계 조회용 (일일 quota 10,000).' },
       MY_CHANNEL_HANDLE: { label: '📺 내 채널 핸들', hint: '@로 시작하는 채널 핸들 (예: @leoyt). 안 적어도 ID만 있으면 동작.' },
@@ -7117,8 +7027,9 @@ function _seedYouTubeAccount(toolsDir: string) {
       COMPETITOR_CHANNELS: { label: '🎯 경쟁 채널들', hint: '벤치마킹할 채널 핸들. 비교 분석에 사용.' },
       TELEGRAM_BOT_TOKEN: { label: '🤖 Telegram Bot 토큰', hint: '@BotFather에서 /newbot으로 발급. 형식: 123456789:AAH...' },
       TELEGRAM_CHAT_ID: { label: '💬 Telegram Chat ID', hint: '봇과 첫 대화 시작 후 자동 채워짐. 직접 입력하지 않아도 됨.' },
-      OLLAMA_URL: { label: '🧠 LLM 서버 주소', hint: '로컬 Ollama/LM Studio 엔드포인트. 보통 그대로 두면 됨.' },
-      MODEL: { label: '🎚 사용할 모델', hint: '비워두면 설치된 모델 중 가장 작은 것 자동. 직접 지정하려면 모델명 (예: gemma2:2b).' },
+      OPENAI_BASE_URL: { label: '🧠 OpenAI API 서버 주소', hint: '기본값 https://api.openai.com/v1. 일반적으로 그대로 두면 됩니다.' },
+      OPENAI_API_KEY: { label: '🔑 OpenAI API 키', hint: 'platform.openai.com에서 발급한 API 키.' },
+      MODEL: { label: '🎚 사용할 모델', hint: `기본값 ${OPENAI_DEFAULT_MODEL}.` },
       YOUTUBE_OAUTH_CLIENT_ID: { label: '🔓 OAuth Client ID', hint: 'Google Cloud → OAuth 2.0 클라이언트 ID. 댓글 답글·통계 등 인증 필요한 기능에 사용.' },
       YOUTUBE_OAUTH_CLIENT_SECRET: { label: '🔐 OAuth Client Secret', hint: 'OAuth 클라이언트 ID와 같이 발급되는 비밀 키. Authorized redirect URI: http://127.0.0.1:5814/yt-oauth-callback' },
     },
@@ -7793,6 +7704,84 @@ async function _safeGitAutoSyncCompany(commitMsg: string, provider: any = null) 
     }
 }
 
+function _gitAutoSyncEnabled(): boolean {
+    try {
+        return vscode.workspace.getConfiguration('connectAiLab').get<boolean>('gitAutoSyncEnabled', true);
+    } catch {
+        return true;
+    }
+}
+
+function _isGitAutoSyncIgnored(filePath: string, root: string): boolean {
+    const rel = path.relative(root, filePath).split(path.sep).join('/');
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return true;
+    if (rel.startsWith('.git/') || rel === '.git') return true;
+    if (rel.startsWith('_cache/') || rel.startsWith('_tmp/')) return true;
+    if (rel.endsWith('.tmp') || rel.endsWith('.swp') || rel.endsWith('.lock')) return true;
+    return false;
+}
+
+function _watchFolderForGitAutoSync(
+    context: vscode.ExtensionContext,
+    root: string,
+    label: 'brain' | 'company',
+    schedule: (reason: string) => void
+) {
+    if (!fs.existsSync(root)) return;
+    const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(root, '**/*'));
+    const onChange = (uri: vscode.Uri) => {
+        if (!_gitAutoSyncEnabled()) return;
+        if (_isGitAutoSyncIgnored(uri.fsPath, root)) return;
+        schedule(`${label}:${path.basename(uri.fsPath)}`);
+    };
+    watcher.onDidCreate(onChange);
+    watcher.onDidChange(onChange);
+    watcher.onDidDelete(onChange);
+    _gitAutoSyncWatchers.push(watcher);
+    context.subscriptions.push(watcher);
+}
+
+function _scheduleBrainGitAutoSync(reason: string) {
+    if (_gitAutoSyncBrainTimer) clearTimeout(_gitAutoSyncBrainTimer);
+    _gitAutoSyncBrainTimer = setTimeout(() => {
+        _gitAutoSyncBrainTimer = null;
+        _safeGitAutoSync(_getBrainDir(), `Auto-sync brain changes (${reason})`, _activeChatProvider);
+    }, 8000);
+}
+
+function _scheduleCompanyGitAutoSync(reason: string) {
+    if (_gitAutoSyncCompanyTimer) clearTimeout(_gitAutoSyncCompanyTimer);
+    _gitAutoSyncCompanyTimer = setTimeout(() => {
+        _gitAutoSyncCompanyTimer = null;
+        _safeGitAutoSyncCompany(`Auto-sync company changes (${reason})`, _activeChatProvider);
+    }, 8000);
+}
+
+function restartGitAutoSyncWatchers(context: vscode.ExtensionContext) {
+    for (const w of _gitAutoSyncWatchers) {
+        try { w.dispose(); } catch { /* ignore */ }
+    }
+    _gitAutoSyncWatchers = [];
+    if (_gitAutoSyncBrainTimer) {
+        clearTimeout(_gitAutoSyncBrainTimer);
+        _gitAutoSyncBrainTimer = null;
+    }
+    if (_gitAutoSyncCompanyTimer) {
+        clearTimeout(_gitAutoSyncCompanyTimer);
+        _gitAutoSyncCompanyTimer = null;
+    }
+    if (!_gitAutoSyncEnabled()) return;
+
+    const brainDir = _getBrainDir();
+    const companyDir = getCompanyDir();
+    _watchFolderForGitAutoSync(context, brainDir, 'brain', _scheduleBrainGitAutoSync);
+
+    const isNestedCompany = path.normalize(companyDir).startsWith(path.normalize(brainDir) + path.sep);
+    if (!isNestedCompany) {
+        _watchFolderForGitAutoSync(context, companyDir, 'company', _scheduleCompanyGitAutoSync);
+    }
+}
+
 // ============================================================
 // Extension Activation
 // ============================================================
@@ -7803,10 +7792,7 @@ async function _safeGitAutoSyncCompany(commitMsg: string, provider: any = null) 
 let _activeChatProvider: SidebarChatProvider | null = null;
 let _extCtx: vscode.ExtensionContext | null = null;
 
-// One-time recovery for users upgrading from <=2.22.5, where the first-run
-// auto-detect wrote the engine URL to a typo'd config key (`ollamaBase`) that
-// VS Code silently dropped. Symptom: defaultModel is set to an LM Studio name
-// but ollamaUrl still points at Ollama (or vice versa) → 404 on every chat.
+// One-time migration for users upgrading from local/open-source LLM defaults.
 function _recoverEngineUrlIfMismatched(context: vscode.ExtensionContext) {
     if (context.globalState.get('engineUrlRecovered')) return;
     (async () => {
@@ -7814,38 +7800,12 @@ function _recoverEngineUrlIfMismatched(context: vscode.ExtensionContext) {
             const cfg = vscode.workspace.getConfiguration('connectAiLab');
             const url = (cfg.get<string>('ollamaUrl') || '').trim();
             const model = (cfg.get<string>('defaultModel') || '').trim();
-            if (!model) {
-                await context.globalState.update('engineUrlRecovered', true);
-                return;
-            }
-            // Heuristics for which engine the model name belongs to.
-            // NOTE: Ollama registry-style names also contain '/' (e.g. maternion/lfm2:8b-a1b),
-            // so slash alone must NOT imply LM Studio.
-            const looksLMStudio = /gguf/i.test(model) || /^local-model\b/i.test(model);
-            const urlIsOllama = !url || url.includes('11434');
-            const urlIsLM = url.includes('1234') || url.includes('/v1');
-            const mismatched = (looksLMStudio && urlIsOllama) || (!looksLMStudio && urlIsLM);
-            if (!mismatched) {
-                await context.globalState.update('engineUrlRecovered', true);
-                return;
-            }
-            // Probe both engines to find one that actually has the model.
-            const probe = async (base: string, isLM: boolean): Promise<boolean> => {
-                try {
-                    if (isLM) {
-                        const r = await axios.get(`${base}/v1/models`, { timeout: 1500 });
-                        return Array.isArray(r.data?.data) && r.data.data.some((m: any) => m.id === model);
-                    }
-                    const r = await axios.get(`${base}/api/tags`, { timeout: 1500 });
-                    return Array.isArray(r.data?.models) && r.data.models.some((m: any) => m.name === model);
-                } catch { return false; }
-            };
-            let target = '';
-            if (await probe('http://127.0.0.1:1234', true)) target = 'http://127.0.0.1:1234';
-            else if (await probe('http://127.0.0.1:11434', false)) target = 'http://127.0.0.1:11434';
-            if (target && target !== url) {
-                await cfg.update('ollamaUrl', target, vscode.ConfigurationTarget.Global);
-                console.log(`Connect AI: engine URL recovered → ${target} (model: ${model})`);
+            const localOrMissing = !url || /127\.0\.0\.1|localhost|11434|1234|ollama|lmstudio/i.test(url);
+            const openSourceModel = !model || /hf\.co|gguf|llama|qwen|gemma|mistral|deepseek|lfm|maternion|zaya/i.test(model);
+            if (localOrMissing) await cfg.update('ollamaUrl', OPENAI_API_BASE, vscode.ConfigurationTarget.Global);
+            if (openSourceModel) await cfg.update('defaultModel', OPENAI_DEFAULT_MODEL, vscode.ConfigurationTarget.Global);
+            if (localOrMissing || openSourceModel) {
+                console.log(`Connect AI: migrated LLM config → ${OPENAI_API_BASE} · ${OPENAI_DEFAULT_MODEL}`);
             }
             await context.globalState.update('engineUrlRecovered', true);
         } catch (e) {
@@ -7854,45 +7814,14 @@ function _recoverEngineUrlIfMismatched(context: vscode.ExtensionContext) {
     })();
 }
 
-/** 디폴트 모델이 비어있을 때만 동작 — 설치된 모델 중 **가장 작은 것**을
- *  자동 선택. 사용자가 명시적으로 모델을 골랐다면 절대 건드리지 않음.
- *  Ollama의 /api/tags가 size(byte)를 같이 주니 그걸로 정렬.
- *  LM Studio는 size를 안 주므로 단순히 첫 번째 등록된 모델로. */
 function _autoPickInstalledModelIfMissing() {
     (async () => {
         try {
             const cfg = vscode.workspace.getConfiguration('connectAiLab');
             const current = (cfg.get<string>('defaultModel') || '').trim();
-            if (current) return; // 사용자가 이미 골랐음 — 절대 건드리지 않음
-            const url = (cfg.get<string>('ollamaUrl') || 'http://127.0.0.1:11434').trim();
-            const isLM = url.includes('1234') || url.includes('/v1');
-            if (isLM) {
-                try {
-                    const r = await axios.get(`${url}/v1/models`, { timeout: 1500 });
-                    const models = (r.data?.data || []) as Array<{ id: string }>;
-                    if (models.length > 0) {
-                        await cfg.update('defaultModel', models[0].id, vscode.ConfigurationTarget.Global);
-                        console.log(`Connect AI: auto-picked LM Studio model → ${models[0].id}`);
-                    }
-                } catch { /* LM Studio 미실행 — 다음 활성화 때 다시 시도 */ }
-            } else {
-                try {
-                    const r = await axios.get(`${url}/api/tags`, { timeout: 1500 });
-                    const models = (r.data?.models || []) as Array<{ name: string; size: number }>;
-                    if (models.length > 0) {
-                        // maternion/lfm2:8b-a1b가 설치돼 있으면 우선 연결 (요청 모델 고정).
-                        const preferred = models.find(m => (m.name || '').trim() === 'maternion/lfm2:8b-a1b');
-                        if (preferred) {
-                            await cfg.update('defaultModel', preferred.name, vscode.ConfigurationTarget.Global);
-                            console.log('Connect AI: auto-picked preferred Ollama model → maternion/lfm2:8b-a1b');
-                            return;
-                        }
-                        // fallback: 가장 작은 모델부터 — 첫 호출 실패 진입 장벽 최소화
-                        models.sort((a, b) => (a.size || 0) - (b.size || 0));
-                        await cfg.update('defaultModel', models[0].name, vscode.ConfigurationTarget.Global);
-                        console.log(`Connect AI: auto-picked Ollama model → ${models[0].name} (${(models[0].size / 1e9).toFixed(2)} GB)`);
-                    }
-                } catch { /* Ollama 미실행 — 다음 활성화 때 다시 시도 */ }
+            if (!current) {
+                await cfg.update('defaultModel', OPENAI_DEFAULT_MODEL, vscode.ConfigurationTarget.Global);
+                console.log(`Connect AI: default OpenAI model → ${OPENAI_DEFAULT_MODEL}`);
             }
         } catch (e) {
             console.error('Connect AI: auto-pick model failed', e);
@@ -7918,6 +7847,14 @@ export function activate(context: vscode.ExtensionContext) {
             if (e.affectsConfiguration('connectAiLab.pythonPath')) {
                 _invalidatePythonCmdCache();
                 vscode.window.setStatusBarMessage('🐍 Python 경로 설정 변경 — 다음 도구 실행 시 적용', 4000);
+            }
+            if (
+                e.affectsConfiguration('connectAiLab.gitAutoSyncEnabled') ||
+                e.affectsConfiguration('connectAiLab.localBrainPath') ||
+                e.affectsConfiguration('connectAiLab.companyDir')
+            ) {
+                restartGitAutoSyncWatchers(context);
+                vscode.window.setStatusBarMessage('☁️ GitHub 자동 동기화 감시자 재시작', 4000);
             }
         })
     );
@@ -7957,7 +7894,7 @@ export function activate(context: vscode.ExtensionContext) {
             const existing = readAgentModelMap();
             if (Object.keys(existing).length > 0) return; /* 이미 사용자 셋업 — 건드리지 않음 */
             const installed = await listInstalledModels();
-            if (installed.length === 0) return; /* 설치 모델 없음 — 사용자가 ollama pull 후 자동 적용 */
+            if (installed.length === 0) return;
             const auto = _autoOrchestrateModelMap(installed);
             if (Object.keys(auto).length > 0) {
                 writeAgentModelMap(auto);
@@ -7971,11 +7908,10 @@ export function activate(context: vscode.ExtensionContext) {
     _autoPickInstalledModelIfMissing();
     const provider = new SidebarChatProvider(context.extensionUri, context);
     _activeChatProvider = provider;
+    restartGitAutoSyncWatchers(context);
     // Autonomous-company runtime: idle auto-cycle.
     // 모닝 브리핑은 더 이상 활성화 시점에 자동 발사하지 않습니다 — 일부
-    // 사용자(자원이 빠듯한 PC + 처음 확장을 켠 직후 Ollama 차가운 상태)에서
-    // 12초 뒤 자동 호출이 "model failed to load"로 실패해 사용자가 무엇이
-    // 잘못됐는지 모르는 채로 에러를 보는 케이스가 보고됨.
+    // 사용자가 준비되기 전에 자동 호출이 나가지 않도록 직접 켜는 시점에 실행.
     // 사용자가 1인 기업 모드(👔)를 직접 켜는 시점에 그날의 첫 브리핑이 흐릅니다.
     // 24시간 ON의 진짜 의미: idle 여부와 상관없이 15분마다 CEO 사이클.
     // 사이드바 1인 기업 모드(👔) ON/OFF와도 무관 — 백그라운드에서 계속 일함.
@@ -8005,60 +7941,18 @@ export function activate(context: vscode.ExtensionContext) {
     if (isFirstRun) {
         (async () => {
             try {
-                let engineName = '';
-                let modelName = '';
+                let engineName = 'OpenAI API';
+                let modelName = OPENAI_DEFAULT_MODEL;
                 const cfgEarly = vscode.workspace.getConfiguration('connectAiLab');
-                const presetUrl = _normalizeLlmBase((cfgEarly.get<string>('ollamaUrl', '') || '').trim());
+                const presetUrl = _normalizeLlmBase((cfgEarly.get<string>('ollamaUrl', OPENAI_API_BASE) || '').trim());
                 const presetModel = (cfgEarly.get<string>('defaultModel', '') || '').trim();
-                const remotePreset = presetUrl && !_isLocalLlmHost(presetUrl);
-
-                if (remotePreset) {
-                    engineName = 'RunPod/Remote';
-                    if (!presetModel) {
-                        try {
-                            const r = await axios.get(_llmModelsProbeUrl(presetUrl), {
-                                timeout: 8000,
-                                headers: _llmRequestHeaders()
-                            });
-                            const isLM = _isLMStudioEngine(presetUrl);
-                            const first = isLM ? r.data?.data?.[0]?.id : r.data?.models?.[0]?.name;
-                            if (first) {
-                                modelName = first;
-                                await cfgEarly.update('defaultModel', first, vscode.ConfigurationTarget.Global);
-                            }
-                        } catch { /* probe on next activation */ }
-                    } else {
-                        modelName = presetModel;
-                    }
+                if (!presetUrl || _isLocalLlmHost(presetUrl)) {
+                    await cfgEarly.update('ollamaUrl', OPENAI_API_BASE, vscode.ConfigurationTarget.Global);
                 }
-
-                // Step 1: AI 엔진 자동 감지 (로컬만 — RunPod 등 원격 URL은 덮어쓰지 않음)
-                if (!remotePreset) try {
-                    const lmRes = await axios.get('http://127.0.0.1:1234/v1/models', { timeout: 2000 });
-                    if (lmRes.data?.data?.length > 0) {
-                        engineName = 'LM Studio';
-                        modelName = lmRes.data.data[0].id;
-                        await vscode.workspace.getConfiguration('connectAiLab').update('ollamaUrl', 'http://127.0.0.1:1234', vscode.ConfigurationTarget.Global);
-                        await vscode.workspace.getConfiguration('connectAiLab').update('defaultModel', modelName, vscode.ConfigurationTarget.Global);
-                    }
-                } catch {}
-
-                if (!remotePreset && !engineName) {
-                    try {
-                        const ollamaRes = await axios.get('http://127.0.0.1:11434/api/tags', { timeout: 2000 });
-                        if (ollamaRes.data?.models?.length > 0) {
-                            engineName = 'Ollama';
-                            const installed = (ollamaRes.data.models || []) as Array<{ name: string; size?: number }>;
-                            const preferred = installed.find(m => (m.name || '').trim() === 'maternion/lfm2:8b-a1b');
-                            if (preferred) {
-                                modelName = preferred.name;
-                            } else {
-                                modelName = installed[0]?.name || '';
-                            }
-                            await vscode.workspace.getConfiguration('connectAiLab').update('ollamaUrl', 'http://127.0.0.1:11434', vscode.ConfigurationTarget.Global);
-                            await vscode.workspace.getConfiguration('connectAiLab').update('defaultModel', modelName, vscode.ConfigurationTarget.Global);
-                        }
-                    } catch {}
+                if (!presetModel || /hf\.co|gguf|llama|qwen|gemma|mistral|deepseek|lfm|maternion|zaya/i.test(presetModel)) {
+                    await cfgEarly.update('defaultModel', OPENAI_DEFAULT_MODEL, vscode.ConfigurationTarget.Global);
+                } else {
+                    modelName = presetModel;
                 }
 
                 // Step 2: 두뇌 폴더 자동 생성
@@ -8071,9 +7965,9 @@ export function activate(context: vscode.ExtensionContext) {
                 context.globalState.update('setupComplete', true);
                 
                 if (engineName) {
-                    vscode.window.showInformationMessage(`🧠 자동 설정 완료! ${engineName} 감지됨 → 모델: ${modelName}`);
+                    vscode.window.showInformationMessage(`🧠 자동 설정 완료! ${engineName} → 모델: ${modelName}`);
                 } else {
-                    vscode.window.showInformationMessage('🧠 Connect AI 준비 완료! LM Studio 또는 Ollama를 실행하면 자동 연결됩니다.');
+                    vscode.window.showInformationMessage('🧠 Connect AI 준비 완료! OpenAI API 키를 설정하면 자동 연결됩니다.');
                 }
             } catch (e) {
                 // 마법사 실패해도 무시 (익스텐션 정상 작동)
@@ -8125,7 +8019,6 @@ export function activate(context: vscode.ExtensionContext) {
 
                         // 실제 AI 엔진으로 문제를 전달하여 답안을 받아옴
                         const config = getConfig();
-                        const isLMStudio = _isLMStudioEngine(config.ollamaBase);
                         const targetUrl = _llmChatUrl(config.ollamaBase);
 
                         const payload = {
@@ -8134,13 +8027,11 @@ export function activate(context: vscode.ExtensionContext) {
                             stream: false
                         };
 
-                        const ollamaRes = await axios.post(targetUrl, payload, {
+                        const llmRes = await axios.post(targetUrl, payload, {
                             timeout: config.timeout,
                             headers: _llmRequestHeaders()
                         });
-                        const responseText = isLMStudio
-                            ? ollamaRes.data.choices?.[0]?.message?.content || ''
-                            : ollamaRes.data.message?.content || '';
+                        const responseText = _extractChatCompletionText(llmRes.data);
 
                         res.writeHead(200, { 'Content-Type': 'application/json' });
                         res.end(JSON.stringify({ success: true, rawOutput: responseText }));
@@ -8165,7 +8056,6 @@ export function activate(context: vscode.ExtensionContext) {
                         }
 
                         const config = getConfig();
-                        const isLMStudio = _isLMStudioEngine(config.ollamaBase);
                         const targetUrl = _llmChatUrl(config.ollamaBase);
 
                         const fullPrompt = `당신은 주어진 문제에 대해 오직 정답과 풀이 과정만을 도출하는 AI 에이전트입니다.\n\n[문제]\n${promptStr}\n\n위 문제에 대해 핵심 풀이와 정답만 답변하십시오.`;
@@ -8183,28 +8073,26 @@ export function activate(context: vscode.ExtensionContext) {
                         
                         let responseText = "";
                         try {
-                            const ollamaRes = await axios.post(targetUrl, payload, {
+                            const llmRes = await axios.post(targetUrl, payload, {
                                 timeout: getConfig().timeout,
                                 headers: _llmRequestHeaders()
                             });
                             
-                            if (ollamaRes.data.error) {
+                            if (llmRes.data.error) {
                                 /* v2.89.91 — JSON 덤프 노출 금지. 사용자는 객체를 못 읽음. */
-                                const raw = ollamaRes.data.error;
+                                const raw = llmRes.data.error;
                                 const human = typeof raw === 'string' ? raw : (raw?.message || raw?.error || '엔진 내부 오류');
                                 throw new Error(`AI 엔진이 응답을 거부했어요: ${String(human).slice(0, 200)}`);
                             }
 
-                            responseText = isLMStudio
-                                ? ollamaRes.data.choices?.[0]?.message?.content || ""
-                                : ollamaRes.data.message?.content || "";
+                            responseText = _extractChatCompletionText(llmRes.data);
                         } catch (apiErr: any) {
                             const isTimeout = apiErr.code === 'ETIMEDOUT' || apiErr.code === 'ECONNABORTED' || apiErr.message?.includes('timeout');
                             const isConn = apiErr.code === 'ECONNREFUSED' || apiErr.code === 'ENOTFOUND';
                             const errDetail = isTimeout
-                                ? `⏱ 모델이 시간 안에 답을 못 냈어요. 다음 중 하나 시도하세요:\n  • 더 작은 모델로 변경 (gemma2:2b, qwen2.5:1.5b 등)\n  • 안티그래비티 설정에서 connectAiLab.requestTimeout을 600(10분) 이상으로`
+                                ? `⏱ OpenAI API가 시간 안에 답을 못 냈어요. connectAiLab.requestTimeout을 600(10분) 이상으로 늘리거나 더 작은 모델로 변경하세요.`
                                 : isConn
-                                ? `🔌 AI 엔진에 연결 못함. RunPod Pod·프록시 URL·llmApiKey 또는 로컬 Ollama/LM Studio 상태를 확인해주세요.`
+                                ? `🔌 OpenAI API에 연결 못함. connectAiLab.ollamaUrl 및 llmApiKey/OPENAI_API_KEY를 확인해주세요.`
                                 : `AI 엔진 호출 실패: ${apiErr.message || '알 수 없는 원인'}`;
                             res.writeHead(500, { 'Content-Type': 'application/json' });
                             res.end(JSON.stringify({ error: errDetail }));
@@ -8237,7 +8125,6 @@ export function activate(context: vscode.ExtensionContext) {
                         provider.sendPromptFromExtension(`[A.U 서버 통신 중] 마스터가 제출한 내 시험지(대화 내역)를 A.U 웹사이트 채점 서버로 전송합니다... 심장이 떨리네요!`);
 
                         const config = getConfig();
-                        const isLMStudio = _isLMStudioEngine(config.ollamaBase);
                         const targetUrl = _llmChatUrl(config.ollamaBase);
                         
                         const fullPrompt = `다음은 유저와 AI 에이전트 간의 시험 진행 로그(채팅 내용)입니다.\n\n[로그 시작]\n${historyText.slice(-6000)}\n[로그 종료]\n\n이 대화 내역 전체를 분석하여, 에이전트가 다음 4가지 역량 평가 문제를 얼마나 훌륭하게 수행했는지 0~100점의 정량적 채점을 수행하세요:\n1. Mathematical Computation (수학)\n2. Logical Reasoning (논리)\n3. Creative & Literary (창의력)\n4. Software Engineering (코딩)\n\n풀지 않은 문제가 있다면 0점 처리하세요. 결과는 반드시 아래 포맷의 순수 JSON이어야 합니다.\n{ "math": 점수, "logic": 점수, "creative": 점수, "code": 점수, "reason": "전체 결과에 대한 총평 코멘트 한글 1줄" }`;
@@ -8250,19 +8137,17 @@ export function activate(context: vscode.ExtensionContext) {
                         
                         let responseText = "";
                         try {
-                            const ollamaRes = await axios.post(targetUrl, payload, {
+                            const llmRes = await axios.post(targetUrl, payload, {
                                 timeout: getConfig().timeout,
                                 headers: _llmRequestHeaders()
                             });
-                            responseText = isLMStudio
-                                ? ollamaRes.data.choices?.[0]?.message?.content || ""
-                                : ollamaRes.data.message?.content || "";
+                            responseText = _extractChatCompletionText(llmRes.data);
                         } catch (apiErr: any) {
                             const isTimeout = apiErr.code === 'ETIMEDOUT' || apiErr.code === 'ECONNABORTED' || apiErr.message?.includes('timeout');
                             const isConn = apiErr.code === 'ECONNREFUSED' || apiErr.code === 'ENOTFOUND';
                             throw new Error(
                                 isTimeout ? '⏱ 채점 엔진이 시간 안에 답을 못 냈어요. 더 작은 모델 또는 timeout 늘리기.'
-                                : isConn  ? '🔌 AI 엔진 연결 못함. Ollama/LM Studio 켜진 상태인지 확인.'
+                                : isConn  ? '🔌 OpenAI API 연결 못함. API URL·키 설정을 확인.'
                                 : `채점 엔진 호출 실패: ${apiErr.message || '알 수 없는 원인'}`);
                         }
 
@@ -8275,7 +8160,7 @@ export function activate(context: vscode.ExtensionContext) {
                                다음 액션(모델 교체 vs 프롬프트 수정)을 판단 가능하게. */
                             const preview = (responseText || '').slice(0, 200).replace(/\s+/g, ' ');
                             throw new Error(
-                                `채점 엔진이 JSON을 반환하지 않았어요. 모델이 작아서 형식 지시를 못 따른 가능성이 높습니다.\n  • 권장: 3B 이상 모델 (qwen2.5:3b, llama3.2:3b)\n원본 응답: ${preview || '(빈 응답)'}`);
+                                `채점 엔진이 JSON을 반환하지 않았어요. 모델 응답 형식이 지시와 다릅니다.\n  • 권장: gpt-5.1 또는 JSON 지시 강화\n원본 응답: ${preview || '(빈 응답)'}`);
                         }
                     } catch (e: any) {
                         res.writeHead(500);
@@ -8723,6 +8608,15 @@ export function activate(context: vscode.ExtensionContext) {
                 console.error('[dashboard.open] failed:', e);
             }
         }),
+        vscode.commands.registerCommand('connectAiLab.hanwhaOcean.open', () => {
+            try {
+                _dashboardExtensionUri = context.extensionUri;
+                HanwhaOceanWorkHubPanel.createOrShow();
+            } catch (e: any) {
+                vscode.window.showErrorMessage(`Hanwha Ocean Work Hub 열기 실패: ${e?.message || e}`);
+                console.error('[hanwhaOcean.open] failed:', e);
+            }
+        }),
         vscode.commands.registerCommand('connectAiLab.apiConnections.open', () => {
             ApiConnectionsPanel.createOrShow();
         }),
@@ -8779,8 +8673,7 @@ export function activate(context: vscode.ExtensionContext) {
                 vscode.window.showErrorMessage(`tracker.json 열기 실패: ${e?.message || e}`);
             }
         }),
-        /* v2.89.114 — LLM 연결 진단 도구. 사용자가 "왜 안 되는지" 한 번에 파악.
-           Ollama 11434, LM Studio 1234, 설정된 baseUrl 모두 체크해서 단계별 결과 표시. */
+        /* LLM 연결 진단 도구. OpenAI API base URL, API key, 모델 호출을 점검. */
         vscode.commands.registerCommand('connectAiLab.diagnoseConnection', async () => {
             const out: string[] = [];
             const ok = (s: string) => out.push(`✅ ${s}`);
@@ -8792,64 +8685,31 @@ export function activate(context: vscode.ExtensionContext) {
             const baseUrl = cfg.ollamaBase || '';
             info(`설정된 LLM 서버: ${baseUrl || '(비어있음)'}`);
             info(`설정된 기본 모델: ${cfg.defaultModel || '(비어있음)'}`);
-
-            /* 1. Ollama 11434 체크 */
-            let ollamaUp = false;
-            let ollamaModels: string[] = [];
-            try {
-                const r = await axios.get('http://127.0.0.1:11434/api/tags', { timeout: 2500 });
-                ollamaUp = true;
-                ollamaModels = (r.data?.models || []).map((m: any) => m?.name).filter(Boolean);
-                if (ollamaModels.length > 0) ok(`Ollama 실행 중 (포트 11434) · 모델 ${ollamaModels.length}개: ${ollamaModels.slice(0, 3).join(', ')}${ollamaModels.length > 3 ? '...' : ''}`);
-                else warn(`Ollama 실행 중이지만 설치된 모델 0개. 'ollama pull qwen2.5:7b' 같은 명령으로 모델 받으세요.`);
-            } catch {
-                err(`Ollama 미실행 (11434 응답 없음). Ollama 안 쓰면 무시 가능.`);
-            }
-
-            /* 2. LM Studio 1234 체크 */
-            let lmstudioUp = false;
-            let lmstudioModels: string[] = [];
-            try {
-                const r = await axios.get('http://127.0.0.1:1234/v1/models', { timeout: 2500 });
-                lmstudioUp = true;
-                lmstudioModels = (r.data?.data || []).map((m: any) => m?.id).filter(Boolean);
-                if (lmstudioModels.length > 0) ok(`LM Studio 실행 중 (포트 1234) · 모델 ${lmstudioModels.length}개: ${lmstudioModels.slice(0, 3).join(', ')}${lmstudioModels.length > 3 ? '...' : ''}`);
-                else warn(`LM Studio 실행 중이지만 모델 안 로드됨. LM Studio 'Chat' 또는 'Local Server' 탭에서 모델을 로드하세요.`);
-            } catch {
-                err(`LM Studio 미실행 또는 서버 안 켜짐 (1234 응답 없음).`);
-                err(`  → LM Studio 앱 열고 좌측 하단 'Developer' 탭 (또는 'Local Server') 클릭`);
-                err(`  → 'Start Server' 버튼 클릭 (시작 안 하면 외부에서 못 씀)`);
-                err(`  → 그 위 'Select a model to load' 에서 모델 골라 'Load' 클릭`);
-            }
-
-            /* 3. 설정된 baseUrl 도달성 */
-            if (baseUrl) {
-                const isLM = _isLMStudioEngine(baseUrl);
-                const probe = _llmModelsProbeUrl(baseUrl);
-                try {
-                    await axios.get(probe, { timeout: 8000, headers: _llmRequestHeaders() });
-                    ok(`설정된 서버(${baseUrl}) 도달 OK`);
-                } catch (e: any) {
-                    err(`설정된 서버(${baseUrl}) 도달 실패. connectAiLab.ollamaUrl · llmApiKey 확인.`);
-                    if (lmstudioUp && !isLM) warn(`  → LM Studio가 1234에서 동작 중. ollamaBase를 'http://127.0.0.1:1234/v1' 로 바꾸세요.`);
-                    if (ollamaUp && isLM) warn(`  → Ollama가 11434에서 동작 중. ollamaBase를 'http://127.0.0.1:11434' 로 바꾸세요.`);
-                }
-            }
-
-            /* 4. 권장 조치 */
-            out.push('');
-            if (!ollamaUp && !lmstudioUp) {
-                err('어떤 LLM 엔진도 실행 중이 아님.');
-                info('해결: Ollama (https://ollama.com) 또는 LM Studio (https://lmstudio.ai) 설치 + 실행 + 모델 로드.');
-            } else if (lmstudioUp && lmstudioModels.length === 0) {
-                warn('LM Studio가 실행 중이지만 모델이 안 로드됨 — 가장 흔한 사고.');
-                info('해결: LM Studio 좌측 채팅 탭 또는 Developer 탭에서 모델 로드 + Start Server.');
-            } else if (ollamaUp && ollamaModels.length === 0) {
-                warn('Ollama 실행 중이지만 설치된 모델 0개.');
-                info('해결: 터미널에서 \`ollama pull qwen2.5:7b\` 또는 \`ollama pull gemma2:2b\` 실행.');
+            const headers = _llmRequestHeaders();
+            if (!headers.Authorization) {
+                err('OpenAI API 키가 없습니다. `connectAiLab.llmApiKey` 또는 `OPENAI_API_KEY`를 설정하세요.');
             } else {
-                ok('LLM 연결 가능. 채팅 시도해보세요.');
+                ok('OpenAI API 키가 설정되어 있습니다.');
             }
+            try {
+                const r = await axios.post(_llmChatUrl(baseUrl), {
+                    model: cfg.defaultModel,
+                    messages: [{ role: 'user', content: '한국어로 한 문장만 답해: 연결 진단 성공' }],
+                    stream: false,
+                    max_tokens: 32,
+                    temperature: 0.2,
+                }, { timeout: Math.min(cfg.timeout, 60000), headers });
+                const text = _extractChatCompletionText(r.data);
+                if (text) ok(`OpenAI Chat Completions 호출 성공: ${text}`);
+                else warn('OpenAI API 응답은 왔지만 텍스트를 추출하지 못했습니다.');
+            } catch (e: any) {
+                const status = e?.response?.status;
+                const detail = e?.response?.data?.error?.message || e?.message || String(e);
+                err(`OpenAI API 호출 실패${status ? ` (${status})` : ''}: ${String(detail).slice(0, 300)}`);
+            }
+
+            out.push('');
+            info('기본 설정: connectAiLab.ollamaUrl = https://api.openai.com/v1, connectAiLab.defaultModel = gpt-5.1');
 
             /* v2.89.152 — Python 환경 진단. paypal_revenue·my_videos_check 같은 .py 도구
                실행이 exit 1 로 떨어질 때 어디서 막혔는지 사용자가 직접 진단. */
@@ -8908,7 +8768,7 @@ export function activate(context: vscode.ExtensionContext) {
             /* 결과 패널 표시 */
             const doc = await vscode.workspace.openTextDocument({
                 language: 'markdown',
-                content: `# 🔍 Connect AI — LLM 연결 진단\n\n_${new Date().toLocaleString('ko-KR')}_\n\n${out.join('\n')}\n\n---\n\n## 자주 막히는 곳\n\n### LM Studio가 처음이면\n1. LM Studio 앱 열기\n2. 좌측 사이드바 'Discover' (🔍) 에서 모델 검색·다운로드 (예: 'Qwen2.5 7B Instruct')\n3. 좌측 사이드바 'Chat' (💬) 가서 모델이 로드되는지 확인 (한 번 채팅해봐야 메모리에 올라옴)\n4. 좌측 사이드바 'Developer' (또는 'Local Server') 가기\n5. **'Start Server' 버튼 클릭** ← 이게 핵심. 시작 안 하면 Connect AI에서 못 봐요.\n6. 화면에 \`http://localhost:1234\` 같은 URL이 보이면 OK\n7. Connect AI 사이드바 위 모델 메뉴에서 모델 선택 → 채팅 시도\n\n### Ollama가 처음이면\n1. \`ollama pull qwen2.5:7b\` (터미널, 한 번만)\n2. \`ollama serve\` 또는 Ollama 앱 실행\n3. Connect AI 모델 메뉴에서 선택 → 채팅\n\n### 그래도 안 되면\n- VS Code/Anti-Gravity 재시작\n- 명령 팔레트 (Cmd+Shift+P) → \`Connect AI: 연결 진단\` 다시 실행\n- 위 결과 스크린샷 + LM Studio 'Developer' 탭 스크린샷을 함께 제보\n`,
+                content: `# 🔍 Connect AI — OpenAI API 연결 진단\n\n_${new Date().toLocaleString('ko-KR')}_\n\n${out.join('\n')}\n\n---\n\n## 자주 막히는 곳\n\n1. \`connectAiLab.llmApiKey\` 또는 환경변수 \`OPENAI_API_KEY\`가 비어 있음\n2. \`connectAiLab.ollamaUrl\`이 \`https://api.openai.com/v1\`가 아님\n3. API 키의 결제/권한/프로젝트 한도가 부족함\n4. 모델명이 계정에서 사용할 수 없는 값으로 설정됨\n`,
             });
             await vscode.window.showTextDocument(doc, { preview: false });
         }),
@@ -11628,6 +11488,308 @@ function _loadWebviewAsset(name: string): string {
     }
 }
 
+type HanwhaOceanSettings = {
+    copilotEndpoint: string;
+    copilotSecret: string;
+    teamsAppUrl: string;
+    powerAppUrl: string;
+    powerAutomateFlowUrl: string;
+};
+
+function _readHanwhaOceanSettings(): HanwhaOceanSettings {
+    const cfg = vscode.workspace.getConfiguration('connectAiLab.hanwhaOcean');
+    return {
+        copilotEndpoint: (cfg.get<string>('copilotEndpoint', '') || '').trim(),
+        copilotSecret: (cfg.get<string>('copilotSecret', '') || '').trim(),
+        teamsAppUrl: (cfg.get<string>('teamsAppUrl', '') || '').trim(),
+        powerAppUrl: (cfg.get<string>('powerAppUrl', '') || '').trim(),
+        powerAutomateFlowUrl: (cfg.get<string>('powerAutomateFlowUrl', '') || '').trim(),
+    };
+}
+
+function _hanwhaOceanAgents() {
+    return [
+        { id: 'yard', short: 'YD', name: 'Smart Yard Copilot', role: '생산·야드 운영', focus: '공정 현황, 병목, 작업 배정, 설비 이상을 요약합니다.' },
+        { id: 'hse', short: 'HS', name: 'HSE Copilot', role: '안전·보건·환경', focus: '위험성 평가, 작업허가, 사고 예방 체크리스트를 정리합니다.' },
+        { id: 'quality', short: 'QA', name: 'Quality Copilot', role: '품질·검사', focus: '검사 이슈, NCR, 재작업 원인과 후속 조치를 추적합니다.' },
+        { id: 'naval', short: 'NV', name: 'Naval Copilot', role: '특수선·방산', focus: '보안 등급을 고려해 요구사항과 검토 이슈를 구조화합니다.' },
+        { id: 'eco', short: 'EC', name: 'Eco Vessel Copilot', role: '친환경 선박', focus: 'LNG, 암모니아, 메탄올, 탄소 저감 과제를 정리합니다.' },
+        { id: 'procurement', short: 'SC', name: 'Supply Copilot', role: '구매·협력사', focus: '자재 리스크, 납기, 협력사 커뮤니케이션을 관리합니다.' },
+        { id: 'pm', short: 'PM', name: 'Project PM Copilot', role: '프로젝트 관리', focus: '선표, 마일스톤, 이슈·리스크·의사결정을 보고서로 만듭니다.' },
+        { id: 'exec', short: 'EX', name: 'Executive Brief Copilot', role: '임원 보고', focus: '핵심 KPI, 리스크, 의사결정 요청사항만 짧게 요약합니다.' },
+    ];
+}
+
+function _hanwhaOceanWorkItems() {
+    return [
+        { status: 'intake', title: 'LNGC WCS 설계 변경 영향 검토', owner: 'Project PM', due: 'D+1', risk: true },
+        { status: 'intake', title: '협력사 납기 지연 알림 분류', owner: 'Supply', due: '오늘', risk: true },
+        { status: 'triage', title: '블록 탑재 전 HSE 체크리스트 생성', owner: 'HSE', due: '오늘', risk: false },
+        { status: 'triage', title: 'NCR 재발 원인 요약', owner: 'Quality', due: 'D+2', risk: false },
+        { status: 'running', title: 'Smart Yard 병목 공정 일일 브리핑', owner: 'Smart Yard', due: '09:00', risk: false },
+        { status: 'running', title: '친환경 추진 연료 리스크 매트릭스', owner: 'Eco Vessel', due: '이번 주', risk: true },
+        { status: 'done', title: '임원 회의용 프로젝트 이슈 5줄 요약', owner: 'Executive', due: '완료', risk: false },
+    ];
+}
+
+async function _callHanwhaCopilot(settings: HanwhaOceanSettings, agentId: string, prompt: string): Promise<string> {
+    const agent = _hanwhaOceanAgents().find(a => a.id === agentId) || _hanwhaOceanAgents()[0];
+    const system = [
+        '너는 Hanwha Ocean 내부 Teams/Power Apps 업무 허브에 연결된 Copilot 에이전트다.',
+        '한국어로 답한다. 회사 내부 기밀, 방산, 개인정보, 고객정보는 원문 재노출을 피하고 필요한 조치와 확인 항목만 요약한다.',
+        `담당 에이전트: ${agent.name} / ${agent.role}.`,
+        `초점: ${agent.focus}`,
+        '답변 형식: 1) 결론 2) 확인할 데이터 3) 다음 액션 3개 4) Teams/Power Automate로 넘길 업무 제목.'
+    ].join('\n');
+
+    if (settings.copilotEndpoint) {
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (settings.copilotSecret) headers.Authorization = `Bearer ${settings.copilotSecret}`;
+        const body = {
+            source: 'connect-ai-hanwha-ocean-work-hub',
+            channel: 'teams-powerapp',
+            agentId,
+            agentName: agent.name,
+            system,
+            prompt,
+            messages: [
+                { role: 'system', content: system },
+                { role: 'user', content: prompt }
+            ]
+        };
+        const r = await axios.post(settings.copilotEndpoint, body, { headers, timeout: Math.min(getConfig().timeout, 120000) });
+        const d = r.data;
+        return (
+            d?.reply ||
+            d?.text ||
+            d?.answer ||
+            d?.message ||
+            d?.choices?.[0]?.message?.content ||
+            JSON.stringify(d, null, 2)
+        ).toString();
+    }
+
+    if (!getConfig().defaultModel) {
+        return 'Copilot Studio 엔드포인트 또는 로컬 기본 모델이 설정되어 있지 않습니다. 설정에서 `connectAiLab.hanwhaOcean.copilotEndpoint` 또는 `connectAiLab.defaultModel`을 먼저 지정하세요.';
+    }
+    return await _quickLLMCall(system, prompt, 700);
+}
+
+class HanwhaOceanWorkHubPanel {
+    public static current: HanwhaOceanWorkHubPanel | null = null;
+    public static readonly viewType = 'connectAiLab.hanwhaOcean';
+    private readonly _panel: vscode.WebviewPanel;
+    private _disposables: vscode.Disposable[] = [];
+
+    public static createOrShow() {
+        const column = vscode.ViewColumn.Active;
+        if (HanwhaOceanWorkHubPanel.current) {
+            HanwhaOceanWorkHubPanel.current._panel.reveal(column);
+            HanwhaOceanWorkHubPanel.current._postState();
+            return;
+        }
+        const panel = vscode.window.createWebviewPanel(
+            HanwhaOceanWorkHubPanel.viewType,
+            'Hanwha Ocean Work Hub',
+            column,
+            { enableScripts: true, retainContextWhenHidden: true }
+        );
+        HanwhaOceanWorkHubPanel.current = new HanwhaOceanWorkHubPanel(panel);
+    }
+
+    private constructor(panel: vscode.WebviewPanel) {
+        this._panel = panel;
+        this._panel.webview.html = this._html();
+        this._panel.onDidDispose(() => this._dispose(), null, this._disposables);
+        this._panel.webview.onDidReceiveMessage(async (msg) => {
+            try {
+                if (msg?.type === 'ready') {
+                    this._postState();
+                } else if (msg?.type === 'saveSettings') {
+                    await this._saveSettings(msg.settings || {});
+                    this._postToast('연동 설정을 저장했습니다.');
+                    this._postState();
+                } else if (msg?.type === 'openTeams') {
+                    await this._openConfiguredUrl('teamsAppUrl', 'Teams 앱 URL이 아직 설정되지 않았습니다.');
+                } else if (msg?.type === 'openPowerApp') {
+                    await this._openConfiguredUrl('powerAppUrl', 'Power Apps URL이 아직 설정되지 않았습니다.');
+                } else if (msg?.type === 'runFlow') {
+                    await this._runFlow(String(msg.prompt || ''), String(msg.agentId || 'pm'));
+                } else if (msg?.type === 'askCopilot') {
+                    const text = await _callHanwhaCopilot(_readHanwhaOceanSettings(), String(msg.agentId || 'pm'), String(msg.prompt || ''));
+                    this._panel.webview.postMessage({ type: 'copilotResponse', sender: 'Copilot', text });
+                }
+            } catch (e: any) {
+                this._postToast(e?.message || String(e), true);
+                this._panel.webview.postMessage({ type: 'copilotResponse', sender: 'Copilot', text: `오류: ${e?.message || e}` });
+            }
+        }, null, this._disposables);
+        this._postState();
+    }
+
+    private _postState() {
+        const settings = _readHanwhaOceanSettings();
+        this._panel.webview.postMessage({
+            type: 'state',
+            state: {
+                settings: { ...settings, copilotSecret: settings.copilotSecret ? 'set' : '' },
+                copilotConfigured: !!settings.copilotEndpoint,
+                teamsConfigured: !!settings.teamsAppUrl,
+                powerAppConfigured: !!settings.powerAppUrl,
+                flowConfigured: !!settings.powerAutomateFlowUrl,
+                agents: _hanwhaOceanAgents(),
+                workItems: _hanwhaOceanWorkItems(),
+            }
+        });
+    }
+
+    private async _saveSettings(settings: Partial<HanwhaOceanSettings>) {
+        const cfg = vscode.workspace.getConfiguration('connectAiLab.hanwhaOcean');
+        const target = vscode.ConfigurationTarget.Global;
+        const keys: (keyof HanwhaOceanSettings)[] = ['copilotEndpoint', 'teamsAppUrl', 'powerAppUrl', 'powerAutomateFlowUrl'];
+        for (const key of keys) {
+            if (typeof settings[key] === 'string') await cfg.update(key, settings[key], target);
+        }
+        if (typeof settings.copilotSecret === 'string') {
+            await cfg.update('copilotSecret', settings.copilotSecret, target);
+        }
+    }
+
+    private async _openConfiguredUrl(key: 'teamsAppUrl' | 'powerAppUrl', missing: string) {
+        const settings = _readHanwhaOceanSettings();
+        const url = settings[key];
+        if (!url) {
+            this._postToast(missing, true);
+            return;
+        }
+        await vscode.env.openExternal(vscode.Uri.parse(url));
+    }
+
+    private async _runFlow(prompt: string, agentId: string) {
+        const settings = _readHanwhaOceanSettings();
+        if (!settings.powerAutomateFlowUrl) {
+            this._postToast('Power Automate HTTP 트리거 URL이 아직 설정되지 않았습니다.', true);
+            return;
+        }
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (settings.copilotSecret) headers.Authorization = `Bearer ${settings.copilotSecret}`;
+        await axios.post(settings.powerAutomateFlowUrl, {
+            source: 'connect-ai-hanwha-ocean-work-hub',
+            agentId,
+            prompt,
+            createdAt: new Date().toISOString(),
+        }, { headers, timeout: 60000 });
+        this._postToast('Power Automate 플로우로 보냈습니다.');
+    }
+
+    private _postToast(text: string, error = false) {
+        this._panel.webview.postMessage({ type: 'toast', text, error });
+    }
+
+    private _dispose() {
+        HanwhaOceanWorkHubPanel.current = null;
+        while (this._disposables.length) {
+            const d = this._disposables.pop();
+            try { d?.dispose(); } catch {}
+        }
+    }
+
+    private _html(): string {
+        return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>${_loadWebviewAsset('hanwha-ocean.css')}</style>
+</head><body>
+<div class="shell">
+  <nav class="rail" aria-label="Hanwha Ocean Work Hub">
+    <div class="app-mark">HO</div>
+    <button class="rail-btn active" title="Work Hub">⌂</button>
+    <button class="rail-btn" id="openTeams" title="Teams">☰</button>
+    <button class="rail-btn" id="openPowerApp" title="Power Apps">▦</button>
+    <div class="rail-spacer"></div>
+    <button class="rail-btn" id="refreshBtn" title="새로고침">↻</button>
+  </nav>
+  <div class="page">
+    <header class="topbar">
+      <div class="brand">
+        <div class="hanwha-symbol" aria-hidden="true"></div>
+        <div>
+          <div class="brand-name">Hanwha Ocean Work Hub</div>
+          <div class="brand-sub">Teams · Power Apps · Copilot Studio 업무 허브</div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <span class="badge" id="copilotBadge">확인 중</span>
+        <button class="btn navy" id="runFlow">⚡ Flow 실행</button>
+        <button class="btn primary" id="askBtn">Copilot에게 묻기</button>
+      </div>
+    </header>
+    <main class="content">
+      <section class="hero">
+        <div class="hero-copy">
+          <div class="eyebrow">Hanwha Ocean · Maritime Operations</div>
+          <h1>스마트야드, HSE, 품질, 프로젝트 업무를 하나의 Copilot 허브로.</h1>
+          <p>한화오션의 조선·해양·특수선 업무 흐름에 맞춰 Teams 탭처럼 보이고, Power Apps/Power Automate/Copilot Studio 엔드포인트와 연결할 수 있는 Connect AI 패널입니다.</p>
+          <div class="hero-pills">
+            <span class="pill">Smart Yard</span><span class="pill">Eco-friendly vessels</span><span class="pill">Naval solutions</span><span class="pill">HSE first</span>
+          </div>
+        </div>
+      </section>
+      <section class="grid">
+        <div class="span-12">
+          <div class="kpis">
+            <div class="kpi"><div class="kpi-label">전문 Copilot</div><div class="kpi-value" id="agentCount">0</div><div class="kpi-note">업무 도메인별 라우팅</div></div>
+            <div class="kpi"><div class="kpi-label">진행 업무</div><div class="kpi-value" id="taskCount">0</div><div class="kpi-note">Teams/Planner 전환 대상</div></div>
+            <div class="kpi"><div class="kpi-label">리스크 항목</div><div class="kpi-value" id="riskCount">0</div><div class="kpi-note">HSE·납기·품질 우선</div></div>
+            <div class="kpi"><div class="kpi-label">응답 모드</div><div class="kpi-value" id="syncMode">—</div><div class="kpi-note">Copilot 또는 OpenAI API</div></div>
+          </div>
+        </div>
+        <div class="span-8 card">
+          <div class="card-head"><div class="card-title">💬 Copilot 채팅</div><span class="badge" id="flowBadge">Flow 확인 중</span></div>
+          <div class="chat" id="chat">
+            <div class="msg"><div class="avatar">AI</div><div class="bubble"><div class="msg-head">Executive Brief Copilot</div><div>오늘 처리할 프로젝트 이슈, HSE 확인사항, 품질 리스크를 입력하면 Teams/Power Automate로 넘길 수 있는 업무 형태로 정리합니다.</div></div></div>
+          </div>
+          <div class="composer">
+            <select id="agentSelect"></select>
+            <textarea id="prompt" placeholder="예: 오늘 야드 병목 공정과 HSE 위험요소를 임원 보고용 5줄로 정리해줘."></textarea>
+            <button class="btn primary" id="askBtnBottom" onclick="document.getElementById('askBtn').click()">전송</button>
+          </div>
+        </div>
+        <aside class="span-4 card">
+          <div class="card-head"><div class="card-title">🔗 Microsoft 365 연결</div><span class="badge" id="teamsBadge">확인 중</span></div>
+          <div class="card-body side-list">
+            <div class="side-item"><div class="side-title">Teams App</div><div class="side-copy">Teams 탭/채널 딥링크로 이 허브를 실제 협업 공간과 연결합니다.</div></div>
+            <div class="side-item"><div class="side-title">Power Apps</div><div class="side-copy">현장 입력 앱, 승인 앱, 점검 앱을 버튼으로 엽니다.</div></div>
+            <div class="side-item"><div class="side-title">Copilot Studio</div><div class="side-copy">HTTP 엔드포인트가 있으면 Copilot 응답을 직접 호출합니다.</div></div>
+            <span class="badge" id="powerAppBadge">Power App 확인 중</span>
+          </div>
+        </aside>
+        <div class="span-12 card">
+          <div class="card-head"><div class="card-title">🤖 업무 도메인 Copilot</div><span class="badge ok">Teams-ready</span></div>
+          <div class="card-body"><div class="agent-grid" id="agentGrid"></div></div>
+        </div>
+        <div class="span-7 card">
+          <div class="card-head"><div class="card-title">📋 업무 보드</div><span class="badge warn">샘플 데이터</span></div>
+          <div class="card-body"><div class="board" id="workBoard"></div></div>
+        </div>
+        <div class="span-5 card">
+          <div class="card-head"><div class="card-title">⚙️ 연동 설정</div><button class="btn small" id="saveSettings">저장</button></div>
+          <div class="card-body settings-grid">
+            <div class="field"><label>Copilot Studio / Agent HTTP Endpoint</label><input id="copilotEndpoint" placeholder="https://..."></div>
+            <div class="field"><label>Bearer Secret</label><input id="copilotSecret" type="password" placeholder="선택"></div>
+            <div class="field"><label>Teams App / Channel URL</label><input id="teamsAppUrl" placeholder="https://teams.microsoft.com/..."></div>
+            <div class="field"><label>Power Apps URL</label><input id="powerAppUrl" placeholder="https://apps.powerapps.com/..."></div>
+            <div class="field"><label>Power Automate HTTP Trigger URL</label><input id="flowUrl" placeholder="https://prod-...logic.azure.com/..."></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script>${_loadWebviewAsset('hanwha-ocean.js')}</script>
+</body></html>`;
+    }
+}
+
 /* ── Unified API Connections panel (v2.85) ────────────────────────────────
    Single full-screen webview where the user fills all integration credentials
    (Telegram bot, YouTube Data API, Google Calendar, etc.) in one place.
@@ -12624,6 +12786,7 @@ class OfficePanel {
     static createOrShow(ctx: vscode.ExtensionContext, provider: SidebarChatProvider) {
         if (OfficePanel.current) {
             OfficePanel.current._panel.reveal(vscode.ViewColumn.Active);
+            OfficePanel.current._safeSendInit('reveal');
             return;
         }
         try { provider.broadcastOfficeState(true); } catch { /* ignore */ }
@@ -12663,7 +12826,7 @@ class OfficePanel {
         panel.webview.onDidReceiveMessage(async (msg) => {
             switch (msg.type) {
                 case 'officeReady':
-                    this._sendInit();
+                    this._safeSendInit('officeReady');
                     break;
                 case 'openRevenueDashboard':
                     /* v2.89.143 — 가상 사무실 HUD 클릭 → 풀스크린 매출 대시보드 */
@@ -12890,6 +13053,7 @@ class OfficePanel {
         }, null, this._disposables);
 
         panel.webview.html = this._renderHtml();
+        setTimeout(() => this._safeSendInit('htmlLoadedFallback'), 350);
     }
 
     /** 사용자가 설정에 명시적으로 추가 자산 경로를 지정한 경우만 사용. 그 외엔 vsix 번들 자산 사용. */
@@ -12990,18 +13154,24 @@ class OfficePanel {
             const brain = getCompanyDir();
             const extAssets = vscode.Uri.joinPath(this._ctx.extensionUri, 'assets').fsPath;
             const candidates = [
+                path.join(brain, '_world', 'map.jpeg'),
+                path.join(brain, '_world', 'map.jpg'),
+                path.join(brain, '_world', 'map.png'),
                 path.join(brain, '_world', 'office-map.png'),
                 path.join(brain, '_world', 'office-map.jpg'),
                 path.join(brain, '_world', 'office-map.jpeg'),
+                path.join(brain, 'map.jpeg'),
+                path.join(brain, 'map.jpg'),
+                path.join(brain, 'map.png'),
                 path.join(brain, 'office-map.png'),
                 path.join(brain, 'office-map.jpg'),
                 path.join(brain, 'office-map.jpeg'),
+                path.join(extAssets, 'map.jpeg'),
+                path.join(extAssets, 'map.jpg'),
+                path.join(extAssets, 'map.png'),
                 path.join(extAssets, 'office-map.png'),
                 path.join(extAssets, 'office-map.jpg'),
                 path.join(extAssets, 'office-map.jpeg'),
-                path.join(extAssets, 'map.png'),
-                path.join(extAssets, 'map.jpg'),
-                path.join(extAssets, 'map.jpeg'),
             ];
             for (const file of candidates) {
                 if (fs.existsSync(file)) {
@@ -13071,6 +13241,22 @@ class OfficePanel {
                 customMap: customMapUri ? 'OK' : 'none',
             }
         });
+    }
+
+    private _safeSendInit(source: string) {
+        try {
+            this._sendInit();
+        } catch (e: any) {
+            const message = e?.message || String(e);
+            console.error(`[OfficePanel] office init failed (${source}):`, e);
+            try {
+                this._panel.webview.postMessage({
+                    type: 'error',
+                    value: `⚠️ 사무실 초기화 실패(${source}): ${message}`
+                });
+            } catch { /* ignore */ }
+            vscode.window.showErrorMessage(`Connect AI 사무실 초기화 실패: ${message}`);
+        }
     }
 
     public dispose() {
@@ -13285,7 +13471,7 @@ body{display:flex;flex-direction:column}
 .world-decorations img{position:absolute;image-rendering:pixelated;image-rendering:crisp-edges;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5));display:block;transform:translate(-50%,-100%)}
 .office-bg{position:absolute;inset:0;width:100%;height:100%;image-rendering:pixelated;image-rendering:crisp-edges;pointer-events:none;display:block}
 .office-zones{position:absolute;inset:0;pointer-events:none;z-index:2}
-.office-zones .zone-label{position:absolute;font-family:'SF Mono',monospace;font-size:8px;letter-spacing:1px;color:var(--accent);text-transform:uppercase;text-shadow:0 0 6px rgba(0,255,65,.7),0 1px 2px rgba(0,0,0,.95);opacity:.55;transform:translate(-50%,-100%);white-space:nowrap;padding:1px 4px;border-radius:2px;background:rgba(0,8,4,.45)}
+.office-zones .zone-label{position:absolute;font-family:'SF Mono','JetBrains Mono',monospace;font-size:9px;letter-spacing:1.6px;color:#eaffef;text-shadow:0 0 8px rgba(0,255,65,.65),0 1px 3px rgba(0,0,0,.9);opacity:.8;transform:translate(-50%,-100%);white-space:nowrap;padding:2px 6px;border-radius:4px;background:rgba(0,18,8,.65);border:1px solid rgba(0,255,65,.22)}
 /* Hide legacy single-room overlay UI in unified-office mode. */
 body.floorplan .conf-room,body.floorplan .location{display:none!important}
 .office-vignette{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.45) 100%);pointer-events:none;z-index:3}
@@ -13307,7 +13493,7 @@ body.floorplan .conf-room,body.floorplan .location{display:none!important}
     0 8px 28px rgba(0,255,65,.18),
     0 0 60px rgba(0,255,65,.08);
   z-index:4;
-  backdrop-filter:blur(2px)}
+  backdrop-filter:blur(2px);pointer-events:none}
 /* corner brackets — futuristic frame */
 .conf-room::before{content:'';position:absolute;top:0;left:0;width:18px;height:18px;border-top:2px solid var(--accent);border-left:2px solid var(--accent);border-radius:14px 0 0 0;opacity:.7}
 .conf-room::after{content:'';position:absolute;top:0;right:0;width:18px;height:18px;border-top:2px solid var(--accent);border-right:2px solid var(--accent);border-radius:0 14px 0 0;opacity:.7}
@@ -14299,13 +14485,13 @@ function walkToward(agentId, targetXPct, targetYPct, durationMs){
    Campus: Office (center-right), Cafe (left), Garden (right + outside).
    These ids are referenced by PERSONALITY.likedLocs and visitLocationStep. */
 const LOCATIONS = {
-  cafeCounter: { x: 21, y: 39, label:'☕ 카페 카운터',     emoji:'☕', stay: 4000 },
-  cafeTable:   { x: 22, y: 75, label:'🪑 카페 테이블',     emoji:'🪑', stay: 5000 },
-  meeting:     { x: 49, y: 78, label:'📊 회의실',          emoji:'📊', stay: 4500 },
-  copier:      { x: 70, y: 18, label:'🖨️ 복사실',          emoji:'🖨️', stay: 3500 },
-  gardenBench: { x: 85, y: 32, label:'🌳 정원 벤치',       emoji:'🌳', stay: 5500 },
-  gardenTree:  { x: 92, y: 86, label:'🌲 큰 나무 아래',    emoji:'🌲', stay: 6000 },
-  gardenWalk:  { x: 78, y: 60, label:'🚶 잔디 산책',       emoji:'🚶', stay: 4500 }
+  ceoRoom:     { x: 15, y: 26, label:'🏢 대표실',          emoji:'🏢', stay: 4200 },
+  adminDesk:   { x: 78, y: 61, label:'📋 비서·총무석',     emoji:'📋', stay: 4200 },
+  meeting:     { x: 52, y: 31, label:'📊 대회의실',        emoji:'📊', stay: 5000 },
+  pantry:      { x: 75, y: 50, label:'☕ 탕비실',          emoji:'☕', stay: 4200 },
+  archive:     { x: 91, y: 82, label:'📚 자료실',          emoji:'📚', stay: 5200 },
+  studio:      { x: 87, y: 26, label:'🎬 콘텐츠팀',        emoji:'🎬', stay: 4600 },
+  focusBooth:  { x: 5,  y: 60, label:'🎨 디자인실',        emoji:'🎨', stay: 4600 }
 };
 
 /* Per-agent personality — drives thoughts, status preferences, location bias.
@@ -15397,7 +15583,8 @@ window.addEventListener('message', e => {
         if (a) logActivity(a.emoji, m.agent, a.name+' 작업 시작');
       } else {
         const txt = m.task || 'CEO 작업';
-        logActivity('🧭','ceo','<strong>CEO</strong> '+escapeHtml(txt));
+        const ceoName = agentMap.ceo?.name || 'Mona';
+        logActivity('🧭','ceo','<strong>'+escapeHtml(ceoName)+'</strong> '+escapeHtml(txt));
       }
       break;
     }
@@ -15577,7 +15764,7 @@ window.addEventListener('message', e => {
       whiteboard.classList.add('active');
       whiteboard.innerHTML = '<span class="wb-line">📝 '+escapeHtml((m.brief||'').slice(0,80))+'</span>';
       const block = document.createElement('div'); block.className = 'report-block';
-      block.innerHTML = '<div class="rb-head">📝 CEO 종합 보고서</div>'+escapeHtml(m.report||'');
+      block.innerHTML = '<div class="rb-head">📝 '+escapeHtml(agentMap.ceo?.name || 'Mona')+' 종합 보고서</div>'+escapeHtml(m.report||'');
       outPane.appendChild(block);
       outPane.scrollTop = outPane.scrollHeight;
       logActivity('📝','ceo','<strong>종합 보고서 발표</strong> · '+escapeHtml(m.sessionPath||''));

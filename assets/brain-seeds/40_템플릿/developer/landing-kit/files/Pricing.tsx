@@ -6,7 +6,7 @@ const plans = [
     price: '₩0',
     period: '/영원히',
     desc: '시작하기',
-    features: ['9명 AI 에이전트', '로컬 LLM 자동 연결', '두뇌 무제한', '커뮤니티 지원'],
+    features: ['9명 AI 에이전트', 'OpenAI API 연결', '두뇌 무제한', '커뮤니티 지원'],
     cta: '지금 다운로드',
     href: '#',
     highlighted: false,
