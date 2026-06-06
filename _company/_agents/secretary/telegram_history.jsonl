@@ -46,3 +46,5 @@
 {"role":"user","text":"/Users/gimtaehyeong/Desktop/태형/4. 코딩/connect-ai/assets/map.jpeg","ts":1780619386341}
 {"role":"user","text":"너가 직접 다운받아","ts":1780717289989}
 {"role":"assistant","text":"(CEO에게 전달) 📨 CEO에게 전달했어요 — 수능 문제 다운로드 작업 요청","ts":1780717292259}
+{"role":"user","text":"다운경로 확인","ts":1780717342475}
+{"role":"assistant","text":"(CEO에게 전달) 📨 CEO에게 전달했어요 — 다운로드 경로 확인 요청","ts":1780717344200}
