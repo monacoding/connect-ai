@@ -25,3 +25,4 @@ _코다리 에이전트만 읽고 쓰는 개인 노트. 학습·교훈·자주 �
 - [2026-06-06] 현재 윈도우를 리로드하세요. → 산출물 sessions/2026-06-06T03-50/developer.md
 - [2026-06-06] 수능 문제를 저장할 '/Users/gimtaehyeong/Downloads/지식메모리/_company/downloads/' 디렉토리를 생성하세요. → 산출물 sessions/2026-06-06T03-58/developer.md
 - [2026-06-06] 수능 문제를 저장할 '/path/to/connect-ai/downloads/' 디렉토리를 생성하세요. → 산출물 sessions/2026-06-06T03-58/developer.md
+- [2026-06-06] '/Users/gimtaehyeong/Desktop/태형/4. 코딩/connect-ai/' 경로에 '데이터베이스' 폴더를 생성하세요. → 산출물 sessions/2026-06-06T03-59/developer.md

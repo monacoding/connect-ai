@@ -35,3 +35,4 @@ _CEO 에이전트만 읽고 쓰는 개인 노트. 학습·교훈·자주 쓰는 
 - [2026-06-06] 수능 다운 다 했어? → 보고서 sessions/2026-06-06T03-57/_report.md
 - [2026-06-06] 디렉토리 먼저 만들어 → 보고서 sessions/2026-06-06T03-58/_report.md
 - [2026-06-06] 그 경로가 아니라 connect-ai 폴더 내에 있는 경로로 만들어줘 → 보고서 sessions/2026-06-06T03-58/_report.md
+- [2026-06-06] /Users/gimtaehyeong/Desktop/태형/4. 코딩/connect-ai/  여기에 "데이터베이스" 폴더로 만들어 → 보고서 sessions/2026-06-06T03-59/_report.md
