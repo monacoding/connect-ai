@@ -18,11 +18,13 @@
       "description": "너가 연결된 url 확인",
       "owner": "user",
       "createdAt": "2026-06-03T13:15:37.202Z",
-      "status": "pending",
+      "status": "cancelled",
       "nudges": 2,
       "priority": "normal",
       "preAlarmsSent": [],
-      "_lastNudgeAt": "2026-06-05T13:32:17.519Z"
+      "_lastNudgeAt": "2026-06-05T13:32:17.519Z",
+      "evidence": "대시보드에서 사용자 취소",
+      "completedAt": "2026-06-06T03:54:28.441Z"
     },
     {
       "id": "20260603132906-ah3j",
@@ -60,13 +62,15 @@
       "owner": "user",
       "createdAt": "2026-06-03T13:57:53.471Z",
       "dueAt": "2026-06-04",
-      "status": "pending",
+      "status": "cancelled",
       "nudges": 3,
       "priority": "normal",
       "preAlarmsSent": [
         "t1d"
       ],
-      "_lastNudgeAt": "2026-06-06T01:52:46.093Z"
+      "_lastNudgeAt": "2026-06-06T01:52:46.093Z",
+      "evidence": "대시보드에서 사용자 취소",
+      "completedAt": "2026-06-06T03:54:25.976Z"
     },
     {
       "id": "20260603153453-34l3",
