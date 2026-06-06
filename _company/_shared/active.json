@@ -1,44 +1,7 @@
 {
   "_migrated": true,
   "_migrated_v2": true,
-  "secretary": {
-    "activatedAt": "2026-06-03T13:18:00.580Z",
-    "seeded": true
-  },
-  "youtube": {
-    "activatedAt": "2026-06-03T13:18:00.580Z",
-    "seeded": true
-  },
-  "writer": {
-    "activatedAt": "2026-06-03T13:18:00.580Z",
-    "seeded": true
-  },
-  "designer": {
-    "activatedAt": "2026-06-03T13:18:00.580Z",
-    "seeded": true
-  },
-  "instagram": {
-    "activatedAt": "2026-06-03T13:18:00.580Z",
-    "seeded": true
-  },
-  "business": {
-    "activatedAt": "2026-06-03T13:18:00.580Z",
-    "seeded": true
-  },
-  "developer": {
-    "activatedAt": "2026-06-03T13:18:00.580Z",
-    "seeded": true
-  },
-  "researcher": {
-    "activatedAt": "2026-06-03T13:18:00.580Z",
-    "seeded": true
-  },
   "_migrated_v3": true,
-  "suneung": {
-    "activatedAt": "2026-06-06T03:44:14.690Z"
-  },
-  "crawler": {
-    "activatedAt": "2026-06-06T04:09:07.476Z"
-  },
-  "_migrated_v4": true
+  "_migrated_v4": true,
+  "_v3_agent_reset": "2026-06-06T05:29:59.325Z"
 }

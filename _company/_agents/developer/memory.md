@@ -27,3 +27,7 @@ _코다리 에이전트만 읽고 쓰는 개인 노트. 학습·교훈·자주 �
 - [2026-06-06] 수능 문제를 저장할 '/path/to/connect-ai/downloads/' 디렉토리를 생성하세요. → 산출물 sessions/2026-06-06T03-58/developer.md
 - [2026-06-06] '/Users/gimtaehyeong/Desktop/태형/4. 코딩/connect-ai/' 경로에 '데이터베이스' 폴더를 생성하세요. → 산출물 sessions/2026-06-06T03-59/developer.md
 - [2026-06-06] '/Users/gimtaehyeong/Desktop/태형/4. 코딩/connect-ai/' 경로에 '데이터베이스' 폴더를 생성하세요. → 산출물 sessions/2026-06-06T04-00/developer.md
+- [2026-06-06] 코다리야 지금 원영이가 해결 못하는 이유 찾아봐 → 산출물 sessions/2026-06-06T05-04/developer.md
+## 학습 기록 — 수능 PDF·DB (2026-06-06)
+- PDF는 원영 kice_pdf_fetch. 코다리는 폴더·manifest·파이프라인
+- 스킬: skills/suneung_database.md

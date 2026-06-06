@@ -1,0 +1,6 @@
+{
+  "RUN_DB": "true",
+  "RUN_RESOURCES": "true",
+  "RUN_ANALYZE": "true",
+  "RUN_GUIDE": "true"
+}

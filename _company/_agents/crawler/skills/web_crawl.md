@@ -15,3 +15,8 @@
 ## Researcher와 구분
 - **원영(crawler)**: 웹에서 raw 자료·링크·본문 **수집**
 - **Researcher**: 수집된 자료 **분석·요약·사실 확인**
+
+## KICE·수능 기출 PDF (전용 스킬)
+- 상세: `kice_suneung_pdf.md` 참고
+- 도구: `kice_pdf_fetch` — `kice.re.kr` 안내 페이지는 PDF 없음, `suneung.re.kr` 게시판 `fileSeq`로 받기
+- 저장: `/Users/gimtaehyeong/Desktop/태형/4. 코딩/connect-ai/데이터베이스`
